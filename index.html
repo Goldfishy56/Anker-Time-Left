@@ -172,7 +172,7 @@
       <li>Close the Anker app completely before connecting. The bank only talks to one phone app at a time.</li>
       <li>If it won't show up, press the bank's button once to wake Bluetooth.</li>
       <li>Keep this page open on screen. iOS pauses Bluetooth for backgrounded pages; the screen is kept awake while connected.</li>
-      <li>The estimate is smoothed over about a minute, and it learns your bank's real capacity as the battery drains.</li>
+      <li>The estimate averages the power draw over the last 3 minutes (a real change, like unplugging a laptop, is picked up in about 30 seconds), and it learns your bank's real capacity as the battery drains.</li>
     </ul>
   </details>
 
@@ -180,7 +180,7 @@
     <summary>Settings</summary>
     <div class="field"><label for="cap">Battery capacity<span class="hint">Wh, from the label</span></label><input id="cap" type="number" step="0.01" min="1" inputmode="decimal"></div>
     <div class="field"><label for="eff">Output efficiency<span class="hint">% of stored energy that reaches your device</span></label><input id="eff" type="number" step="1" min="50" max="100" inputmode="numeric"></div>
-    <div class="field"><label for="smooth">Smoothing<span class="hint">seconds; higher = steadier, slower to react</span></label><input id="smooth" type="number" step="5" min="5" max="600" inputmode="numeric"></div>
+    <div class="field"><label for="smooth">Averaging window<span class="hint">seconds of power draw to average; higher = steadier</span></label><input id="smooth" type="number" step="30" min="30" max="900" inputmode="numeric"></div>
     <p class="muted" id="learned"></p>
     <p><button class="secondary" id="reset-learned">Forget learned capacity</button></p>
   </details>

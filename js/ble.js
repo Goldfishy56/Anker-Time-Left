@@ -116,10 +116,10 @@ export class PrimeBle {
         this.status("live");
         this.lastTelemetryAt = Date.now();
       },
-      onTelemetry: (params) => {
+      onTelemetry: (params, cmd) => {
         this.lastTelemetryAt = Date.now();
         if (this.state !== "live") this.status("live");
-        this.h.onTelemetry(params);
+        this.h.onTelemetry(params, cmd);
       },
     });
 

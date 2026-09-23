@@ -5,7 +5,7 @@
 //   usable Wh per 1 %  = capacityWh * efficiency / 100   (prior)
 //   refined over time by measuring Wh actually delivered per % dropped.
 //   remaining Wh       = socEstimate * whPerPercent
-//   time left          = remaining Wh / smoothed net watts
+//   time left          = remaining Wh / average net watts over the last few minutes
 //
 // The bank only reports whole percents, so between ticks the state of charge
 // is interpolated by integrating the measured power draw.
@@ -14,12 +14,17 @@ export const DEFAULTS = {
   capacityWh: 72.36, // Anker Prime 20K 220W (A110B): 20,100 mAh @ 3.6 V
   efficiency: 0.85, // cell -> USB output conversion efficiency
   chargeEfficiency: 0.9, // USB input -> cell
-  smoothingSeconds: 60, // time constant of the power moving average
+  averageSeconds: 180, // window of the power moving average
 };
 
 const MIN_LOAD_W = 0.3; // below this the bank is effectively idle
 const LEARN_MIN_DROP = 3; // % drop needed before trusting a measured Wh/%
 const MAX_GAP_S = 30; // longer telemetry gaps reset integration
+// A new load is adopted early only if every sample for this long sits on the
+// same side of the running average, by a clear margin (plug/unplug, not noise).
+const SHIFT_SECONDS = 30;
+const SHIFT_MIN_W = 3;
+const SHIFT_RATIO = 0.35;
 
 export class Estimator {
   constructor(settings = {}, learned = null) {
@@ -33,7 +38,8 @@ export class Estimator {
     this.lastT = null;
     this.pct = null;
     this.soc = null; // interpolated state of charge, %
-    this.netW = null; // smoothed net power: + discharging, - charging
+    this.netW = null; // averaged net power: + discharging, - charging
+    this.samples = []; // recent { t, net } for the moving average
     this.instantNetW = 0;
     this.anchor = null; // { pct } % boundary where the learning window began
     this.deliveredWh = 0; // output energy since anchor
@@ -65,16 +71,7 @@ export class Estimator {
     const dt = this.lastT == null ? 0 : (t - this.lastT) / 1000;
     const gap = dt > MAX_GAP_S;
 
-    // Exponential moving average of net power, time-aware.
-    if (this.netW == null || gap) this.netW = net;
-    else {
-      const a = 1 - Math.exp(-dt / this.s.smoothingSeconds);
-      this.netW += a * (net - this.netW);
-      // Snap faster when the load changes a lot (plugging/unplugging).
-      if (Math.abs(net - this.netW) > Math.max(5, Math.abs(this.netW) * 0.6)) {
-        this.netW += 0.5 * (net - this.netW);
-      }
-    }
+    this.netW = this.average(t, net, gap);
     this.instantNetW = net;
 
     // Interpolate state of charge between whole-percent readings.
@@ -97,6 +94,32 @@ export class Estimator {
     this.pct = pct;
     this.estimate = this.compute(t);
     return this.estimate;
+  }
+
+  // Moving average of net power over `averageSeconds`. Noisy loads (phones
+  // renegotiating, laptops idling) average out; a sustained change in load
+  // restarts the window so the estimate still follows it within ~30 s.
+  average(t, net, gap) {
+    if (gap) this.samples = [];
+    this.samples.push({ t, net });
+    const windowStart = t - this.s.averageSeconds * 1000;
+    while (this.samples.length > 1 && this.samples[0].t < windowStart) this.samples.shift();
+
+    const mean = (list) => list.reduce((a, x) => a + x.net, 0) / list.length;
+    const long = mean(this.samples);
+    const recent = this.samples.filter((x) => x.t >= t - SHIFT_SECONDS * 1000);
+    const older = this.samples.length - recent.length;
+    if (older > 0 && recent.length >= 3 && t - recent[0].t >= SHIFT_SECONDS * 0.8) {
+      const base = mean(this.samples.slice(0, older));
+      const margin = Math.max(SHIFT_MIN_W, Math.abs(base) * SHIFT_RATIO);
+      const allAbove = recent.every((x) => x.net > base + margin);
+      const allBelow = recent.every((x) => x.net < base - margin);
+      if (allAbove || allBelow) {
+        this.samples = recent;
+        return mean(recent);
+      }
+    }
+    return long;
   }
 
   // Measure how many output Wh the bank really delivers per 1 % it drops,

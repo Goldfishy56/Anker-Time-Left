@@ -1,5 +1,5 @@
 import { PrimeBle, bluetoothAvailable } from "./ble.js";
-import { decodeA110B, PortStatus } from "./protocol.js";
+import { a110bProblem, decodeA110B, hex, PortStatus } from "./protocol.js";
 import { DEFAULTS, Estimator, formatDuration } from "./estimator.js";
 
 const $ = (id) => document.getElementById(id);
@@ -25,6 +25,7 @@ const store = {
 };
 
 let settings = { ...DEFAULTS, ...store.get("settings", {}) };
+delete settings.smoothingSeconds; // old setting, replaced by averageSeconds
 const estimator = new Estimator(settings, store.get("learned", null));
 estimator.onLearned = (l) => {
   store.set("learned", l);
@@ -68,11 +69,16 @@ function portFlows(t) {
   return { out, inn };
 }
 
-function onTelemetry(params) {
+function onTelemetry(params, cmd = "demo") {
   const t = decodeA110B(params);
-  if (t.battery == null) return log("telemetry without battery %: ignored");
+  const problem = a110bProblem(t, params);
+  if (problem) {
+    return log(`ignored ${cmd} (${problem}): ${[...params].map(([k, v]) => k + "=" + hex(v)).join(" ")}`);
+  }
   latest = t;
   const { out, inn } = portFlows(t);
+  const p = t.ports;
+  log(`${cmd} ${t.battery}% out=${out} in=${inn} c1=${p.c1.status}/${p.c1.watts}W c2=${p.c2.status}/${p.c2.watts}W a=${p.a.status}/${p.a.watts}W`);
   estimator.update(Date.now(), t.battery, out, inn);
   latest.out = out;
   latest.inn = inn;
@@ -286,7 +292,7 @@ $("demo").addEventListener("click", startDemo);
 function renderSettings() {
   $("cap").value = settings.capacityWh;
   $("eff").value = Math.round(settings.efficiency * 100);
-  $("smooth").value = settings.smoothingSeconds;
+  $("smooth").value = settings.averageSeconds;
   renderLearned();
 }
 function renderLearned() {
@@ -303,7 +309,7 @@ function saveSettings() {
   const smooth = parseFloat($("smooth").value);
   if (cap > 0) settings.capacityWh = cap;
   if (eff >= 0.5 && eff <= 1) settings.efficiency = eff;
-  if (smooth >= 5) settings.smoothingSeconds = smooth;
+  if (smooth >= 30) settings.averageSeconds = smooth;
   store.set("settings", settings);
   Object.assign(estimator.s, settings);
   renderLearned();

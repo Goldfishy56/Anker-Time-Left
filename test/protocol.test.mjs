@@ -95,6 +95,20 @@ test("decodes A110B telemetry fields", () => {
   assert.equal(t.temperature, -30);
 });
 
+test("rejects packets that lack port data or have impossible values", () => {
+  const partial = P.parseParams(P.buildParams([["a2", P.fromHex("0157")], ["a6", P.fromHex("00000000")]]));
+  assert.match(P.a110bProblem(P.decodeA110B(partial), partial), /missing a8,a9,ac/);
+  const port = P.fromHex("0001c8001900c201");
+  const weird = P.parseParams(P.buildParams([
+    ["a2", P.fromHex("01c8")], ["a8", port], ["a9", port], ["ac", port],
+  ]));
+  assert.match(P.a110bProblem(P.decodeA110B(weird), weird), /battery 200/);
+  const good = P.parseParams(P.buildParams([
+    ["a2", P.fromHex("0140")], ["a8", port], ["a9", port], ["ac", port],
+  ]));
+  assert.equal(P.a110bProblem(P.decodeA110B(good), good), null);
+});
+
 // A fake power bank that speaks the device side of the handshake, to check
 // the whole state machine end to end (including ECDH key agreement).
 test("full negotiation against a simulated device, then telemetry", async () => {

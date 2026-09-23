@@ -23,7 +23,8 @@ Tap **Try demo mode** to see the UI without the bank.
 
 - **Usable energy**: 72.36 Wh (20,100 mAh × 3.6 V) × 85 % conversion efficiency ≈ 61.5 Wh from 100 % to empty.
 - **Self-calibrating**: once the battery has dropped a few whole percent while connected, the app measures how many Wh your bank really delivered per percent and blends that into the estimate. The value is saved in the browser. Settings shows it, and you can reset it there.
-- **Smooth, not jumpy**: power draw is averaged over about 60 s (adjustable), but a big change such as plugging in a laptop is picked up within a few seconds.
+- **Steady, not jumpy**: power draw is averaged over the last 3 minutes (adjustable), so noisy loads like phones even out. A sustained change, such as unplugging a laptop, restarts the average within about 30 s.
+- **Bad readings ignored**: packets missing port data or with impossible values are skipped (and noted in the debug log).
 - **Between % ticks** the app interpolates the charge from the measured watts, so the countdown moves every second instead of jumping each time the percentage changes.
 - **Charging**: time to full assumes about 90 % input efficiency and a slower last 10 %.
 

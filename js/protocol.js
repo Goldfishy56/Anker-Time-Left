@@ -231,7 +231,7 @@ export async function ecdhSharedSecret(devicePublicXY) {
  * Events (all optional callbacks):
  *   onStage(n)            negotiation progress, 0..7
  *   onNegotiated()        session key established, telemetry requested
- *   onTelemetry(params)   decrypted telemetry Map
+ *   onTelemetry(params, cmd)  decrypted telemetry Map and its command code
  *   onLog(msg)            debug text
  */
 export class PrimeSession {
@@ -315,10 +315,10 @@ export class PrimeSession {
     }
 
     if (SESSION_PATTERNS.has(pattern) && this.sharedSecret) {
-      if (cmd === "0300") return this.onTelemetry(parseParams(payload));
+      if (cmd === "0300") return this.onTelemetry(parseParams(payload), cmd);
       const params = parseParams(await gcmDecrypt(this.key, this.nonce, payload));
       const looksLikeTelemetry = ["a2", "a6", "a8", "a9", "ac"].every((k) => params.has(k));
-      if (TELEMETRY_COMMANDS.has(cmd) || looksLikeTelemetry) return this.onTelemetry(params);
+      if (TELEMETRY_COMMANDS.has(cmd) || looksLikeTelemetry) return this.onTelemetry(params, cmd);
       this.onLog(`unhandled ${pattern}/${cmd}: ${[...params].map(([k, v]) => k + "=" + hex(v)).join(" ")}`);
     }
   }
@@ -404,6 +404,21 @@ function port(params, key) {
     amps: readInt(v, 4, 6) / 10,
     watts: readInt(v, 6, 8) / 10,
   };
+}
+
+/**
+ * Why a decoded A110B sample can't be trusted for the estimate, or null if
+ * it looks sane. Other packet types reuse some of the same keys.
+ */
+export function a110bProblem(t, params) {
+  const missing = ["a2", "a8", "a9", "ac"].filter((k) => !params.has(k));
+  if (missing.length) return "missing " + missing.join(",");
+  if (t.battery == null || t.battery > 100) return "battery " + t.battery;
+  for (const [name, p] of Object.entries(t.ports)) {
+    if (p.status < 0 || p.status > 2) return `${name} status ${p.status}`;
+    if (p.volts > 50 || p.watts > 250) return `${name} ${p.volts}V ${p.watts}W`;
+  }
+  return null;
 }
 
 /** Decode Anker Prime Power Bank 20K 220W (A110B) telemetry. */

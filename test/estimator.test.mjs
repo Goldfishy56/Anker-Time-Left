@@ -22,19 +22,42 @@ test("constant 45 W load from 80 % gives ~1h05m", () => {
   assert.equal(formatDuration(e.seconds), "1:05:36");
 });
 
-test("smoothing damps a short spike", () => {
+test("a one-off spike barely moves the estimate", () => {
   const est = new Estimator();
-  for (let t = 0; t < 120; t += 2) est.update(t * 1000, 60, 20, 0);
-  const e = est.update(122000, 60, 23, 0); // brief bump
+  for (let t = 0; t < 180; t += 2) est.update(t * 1000, 60, 20, 0);
+  const e = est.update(180000, 60, 60, 0);
   assert.ok(e.netW > 20 && e.netW < 21, `netW ${e.netW}`);
 });
 
-test("large load change is followed quickly", () => {
+test("noisy phone-style load gives a steady countdown", () => {
   const est = new Estimator();
-  for (let t = 0; t < 120; t += 2) est.update(t * 1000, 60, 10, 0);
+  let seed = 1;
+  const rand = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  const seen = [];
+  for (let t = 0; t <= 900; t += 2) {
+    // Bounces between ~3 W and ~27 W every sample, averaging 15 W.
+    const e = est.update(t * 1000, 70, 3 + 24 * rand(), 0);
+    if (t >= 300) seen.push(e.seconds);
+  }
+  const min = Math.min(...seen);
+  const max = Math.max(...seen);
+  assert.ok(max / min < 1.25, `range ${min.toFixed(0)}..${max.toFixed(0)} s`);
+});
+
+test("a sustained load change is followed within ~30 s", () => {
+  const est = new Estimator();
+  for (let t = 0; t < 180; t += 2) est.update(t * 1000, 60, 10, 0);
   let e;
-  for (let t = 120; t < 130; t += 2) e = est.update(t * 1000, 60, 60, 0);
-  assert.ok(e.netW > 45, `netW ${e.netW}`);
+  for (let t = 180; t <= 216; t += 2) e = est.update(t * 1000, 60, 60, 0);
+  assert.ok(e.netW > 55, `netW ${e.netW}`);
+});
+
+test("unplugging most of the load is followed too", () => {
+  const est = new Estimator();
+  for (let t = 0; t < 180; t += 2) est.update(t * 1000, 60, 60, 0);
+  let e;
+  for (let t = 180; t <= 216; t += 2) e = est.update(t * 1000, 60, 8, 0);
+  assert.ok(e.netW < 12, `netW ${e.netW}`);
 });
 
 test("countdown ticks down between samples", () => {
