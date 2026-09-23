@@ -1,7 +1,7 @@
-import { PrimeBle, bluetoothAvailable } from "./ble.js?v=9";
-import { a110bProblem, decodeA110B, hex, PortStatus } from "./protocol.js?v=9";
-import { DEFAULTS, Estimator, formatDuration } from "./estimator.js?v=9";
-import { APP_VERSION, CHANGELOG } from "./changelog.js?v=9";
+import { PrimeBle, bluetoothAvailable } from "./ble.js?v=10";
+import { a110bProblem, decodeA110B, hex, PortStatus } from "./protocol.js?v=10";
+import { DEFAULTS, Estimator, formatDuration } from "./estimator.js?v=10";
+import { APP_VERSION, CHANGELOG } from "./changelog.js?v=10";
 
 const $ = (id) => document.getElementById(id);
 
@@ -149,6 +149,12 @@ function resetHero() {
   $("hero").className = "card hero";
 }
 
+// Powered by the charging base or a charger cable (the bank reports both
+// through its input total / input record).
+function onCharger(t) {
+  return t.input.status > 0 || t.inW > 0;
+}
+
 function fmtW(w) {
   return w >= 100 ? w.toFixed(0) : w.toFixed(1);
 }
@@ -165,7 +171,7 @@ function renderTelemetry() {
 
   $("ports").classList.remove("hidden");
   const rows = [...PORTS];
-  if (t.input.status > 0 || t.inW > 0) rows.unshift(["input", "Charger"]);
+  if (onCharger(t)) rows.unshift(["input", "Charging input"]);
   $("ports").innerHTML = rows.map(([key, name]) => {
     const p = key === "input" ? { ...t.input, status: PortStatus.INPUT } : t.ports[key];
     const [label, cls] =
@@ -197,7 +203,20 @@ function renderCountdown() {
   const avg = Math.abs(e.netW);
   let cls = "card hero";
 
-  if (e.mode === "discharging") {
+  const charger = onCharger(latest);
+  const passthrough = latest.out > 0.5 ? ` · passing ${fmtW(latest.out)} W to your devices` : "";
+  if (charger && latest.pct >= 99.5 && e.mode !== "discharging") {
+    // Typical for a bank that lives on the charging base.
+    $("mode").textContent = "On charger";
+    $("countdown").textContent = "Full";
+    $("sub").textContent = "Fully charged" + passthrough;
+    cls += " charging";
+  } else if (charger && e.mode === "idle") {
+    $("mode").textContent = "On charger";
+    $("countdown").textContent = "Holding";
+    $("sub").textContent = "The charger is covering what your devices draw" + passthrough;
+    cls += " charging";
+  } else if (e.mode === "discharging") {
     $("mode").textContent = "until empty";
     $("countdown").textContent = formatDuration(secs);
     const at = new Date(Date.now() + secs * 1000);
@@ -429,3 +448,6 @@ if (!bluetoothAvailable()) {
 }
 renderSettings();
 onStatus("disconnected");
+
+// Browser tests feed captured packets through here (only with #test in the URL).
+if (location.hash === "#test") Object.assign(window, { __telemetry: onTelemetry, __status: onStatus });

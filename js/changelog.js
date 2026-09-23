@@ -2,6 +2,16 @@
 // version is the app version shown in the footer.
 export const CHANGELOG = [
   {
+    version: 10,
+    date: "2026-09-23",
+    changes: [
+      "Prime charging base: charging on the base shows as \"until full\" like a cable, because the app reads the bank's own input total.",
+      "A bank sitting on its charger at 100 % now shows \"Full\" (plus any power it's passing through to your devices) instead of \"Nothing is drawing power\".",
+      "If the charger exactly covers what your devices draw, it shows \"Holding\" instead of a countdown.",
+      "The charger row in the port list is now called \"Charging input\", since it covers both the base and a cable.",
+    ],
+  },
+  {
     version: 9,
     date: "2026-09-23",
     changes: [
