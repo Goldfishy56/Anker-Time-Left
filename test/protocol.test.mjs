@@ -80,7 +80,7 @@ test("parses TLV params with optional 00 prefix", () => {
 test("decodes A110B telemetry fields", () => {
   const params = P.buildParams([
     ["a2", P.fromHex("0157")], // 87 %
-    ["a6", P.fromHex("0000c201")], // 45.0 W
+    ["a6", P.fromHex("0001c201")], // active, 45.0 W
     ["a8", P.fromHex("0001c8001900c201")], // C1 output 20.0V 2.5A 45.0W
     ["a9", P.fromHex("0000000000000000")], // C2 off
     ["ac", P.fromHex("0002320014006400")], // A input 5.0V 2.0A 10.0W
@@ -263,4 +263,12 @@ test("answers the bank's 0223 request with an encrypted 4a23", async () => {
   assert.equal(pkt.pattern + "/" + pkt.cmd, "03000f/4a23");
   const plain = await P.gcmDecrypt(session.key, session.nonce, pkt.payload);
   assert.equal(P.hex(P.parseParams(plain).get("a1")), "21");
+});
+
+test("inactive input with a leftover wattage counts as 0 W (captured right after unplugging)", () => {
+  // a5 = 04 00 e700: status 0 but 23.1 W still reported.
+  const t = decodeRaw(
+    "ff0973000301110300a10131a203040939a30404010000a4020101a5040400e700a60404000000a7080400d5000a000000a80f0400000000003800ff00ffffffff00a90f0400000000000000ff00ffffffff00ac09040000000000000000af02011fb0020120b103022a00fe050300000000df",
+  );
+  assert.equal(t.inW, 0);
 });

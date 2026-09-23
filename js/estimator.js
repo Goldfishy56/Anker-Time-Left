@@ -27,6 +27,7 @@ const LEARN_MAX_GAP_S = 120;
 const SHIFT_SECONDS = 30;
 const SHIFT_MIN_W = 3;
 const SHIFT_RATIO = 0.35;
+const FLIP_MIN_W = 3; // charging below this net input is treated as not charging
 
 export class Estimator {
   constructor(settings = {}, learned = null) {
@@ -119,6 +120,22 @@ export class Estimator {
 
     const mean = (list) => list.reduce((a, x) => a + x.net, 0) / list.length;
     const long = mean(this.samples);
+
+    // Charging starting or stopping flips the direction of power: follow it
+    // immediately (after two readings agree) rather than waiting out the
+    // window, or "until full" lingers after the charger is removed.
+    const charging = (w) => w < -FLIP_MIN_W;
+    const before = this.samples.slice(0, -1);
+    if (before.length && charging(mean(before)) !== charging(net)) {
+      this.flipCount = (this.flipCount || 0) + 1;
+      if (this.flipCount >= 2) {
+        this.flipCount = 0;
+        this.samples = this.samples.slice(-2);
+        return mean(this.samples);
+      }
+    } else {
+      this.flipCount = 0;
+    }
     const recent = this.samples.filter((x) => x.t >= t - SHIFT_SECONDS * 1000);
     const older = this.samples.length - recent.length;
     if (older > 0 && recent.length >= 3 && t - recent[0].t >= SHIFT_SECONDS * 0.8) {

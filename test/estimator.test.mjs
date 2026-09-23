@@ -137,3 +137,38 @@ test("precise % is used as-is and still learns capacity", () => {
   assert.ok(Math.abs(est.soc - Math.round(pct * 100) / 100) < 0.2, `soc ${est.soc} vs ${pct}`);
   assert.ok(est.learned && Math.abs(est.learned.whPerPct - trueWhPerPct) < 0.02, `learned ${est.learned && est.learned.whPerPct}`);
 });
+
+test("taking the bank off the charger leaves 'until full' within seconds", () => {
+  const est = new Estimator();
+  let e;
+  for (let t = 0; t < 300; t++) e = est.update(t * 1000, 50, 0, 95, { precise: true });
+  assert.equal(e.mode, "charging");
+  e = est.update(300000, 50, 0, 0, { precise: true });
+  e = est.update(301000, 50, 0, 0, { precise: true });
+  assert.equal(e.mode, "idle");
+  // With a phone plugged in it goes straight to 'until empty'.
+  for (let t = 302; t < 600; t++) e = est.update(t * 1000, 50, 0, 95, { precise: true });
+  e = est.update(600000, 50, 6, 0, { precise: true });
+  e = est.update(601000, 50, 6, 0, { precise: true });
+  assert.equal(e.mode, "discharging");
+  assert.ok(Math.abs(e.netW - 6) < 0.01);
+});
+
+test("putting it on the charger switches to 'until full' within seconds", () => {
+  const est = new Estimator();
+  let e;
+  for (let t = 0; t < 300; t++) e = est.update(t * 1000, 50, 6, 0);
+  e = est.update(300000, 50, 0, 90);
+  e = est.update(301000, 50, 0, 90);
+  assert.equal(e.mode, "charging");
+});
+
+test("one odd reading doesn't flip the mode", () => {
+  const est = new Estimator();
+  let e;
+  for (let t = 0; t < 300; t++) e = est.update(t * 1000, 50, 0, 95);
+  e = est.update(300000, 50, 0, 0); // a single dropout mid-charge
+  e = est.update(301000, 50, 0, 95);
+  assert.equal(e.mode, "charging");
+  assert.ok(e.netW < -90, `netW ${e.netW}`);
+});

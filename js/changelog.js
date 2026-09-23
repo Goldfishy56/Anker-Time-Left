@@ -2,6 +2,14 @@
 // version is the app version shown in the footer.
 export const CHANGELOG = [
   {
+    version: 11,
+    date: "2026-09-23",
+    changes: [
+      "Fixed: taking the bank off the charging base left \"until full\" running and counting up. When charging stops the bank marks its input as off but keeps sending the last wattage; the app now respects the off flag.",
+      "Charging starting or stopping now switches the display within about 2 seconds, instead of waiting for the 3-minute average to catch up.",
+    ],
+  },
+  {
     version: 10,
     date: "2026-09-23",
     changes: [

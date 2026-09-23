@@ -461,7 +461,7 @@ export function a110bProblem(t, params) {
  *   a2  battery: [1] whole %, [2] hundredths
  *   a3  bank's own time-to-full while charging: [2] hours, [3] minutes
  *       (23:59 while it's still working it out)
- *   a5  total input:  [1] active, [2..4] W/10
+ *   a5  total input:  [1] active, [2..4] W/10 (stale W possible when inactive)
  *   a6  total output: [1] active, [2..4] W/10
  *   a7  charger input port:  [1] status, V/10, A/10, W/10
  *   a8/a9/ac  USB-C1 / USB-C2 / USB-A: [1] status, V/10, A/10, W/10
@@ -473,7 +473,10 @@ export function decodeA110B(params) {
   const a5 = params.get("a5");
   const a6 = params.get("a6");
   const af = params.get("af");
-  const total = (v) => (v && v.length >= 4 ? readInt(v, 2, 4) / 10 : null);
+  // [1] is an active flag. When charging stops the bank clears it but can
+  // keep sending the last wattage (seen: status 0 with 23.1 W), so an
+  // inactive total counts as 0 W.
+  const total = (v) => (v && v.length >= 4 ? (v[1] ? readInt(v, 2, 4) / 10 : 0) : null);
   let bankMinutesToFull = null;
   if (a3 && a3.length >= 4 && a3[1] === 1) {
     const [h, m] = [a3[2], a3[3]];
