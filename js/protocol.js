@@ -262,6 +262,7 @@ export class PrimeSession {
     const payload = await gcmEncrypt(this.key, this.nonce, buildParams(params));
     const packet = buildPacket(pattern, cmd, payload);
     this.onLog(`→ ${pattern}/${cmd} ${hex(packet)}`);
+    this.lastSentAt = Date.now();
     await this.write(packet);
   }
 

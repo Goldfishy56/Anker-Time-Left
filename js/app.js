@@ -1,7 +1,7 @@
-import { PrimeBle, bluetoothAvailable } from "./ble.js?v=5";
-import { a110bProblem, decodeA110B, hex, PortStatus } from "./protocol.js?v=5";
-import { DEFAULTS, Estimator, formatDuration } from "./estimator.js?v=5";
-import { APP_VERSION, CHANGELOG } from "./changelog.js?v=5";
+import { PrimeBle, bluetoothAvailable } from "./ble.js?v=6";
+import { a110bProblem, decodeA110B, hex, PortStatus } from "./protocol.js?v=6";
+import { DEFAULTS, Estimator, formatDuration } from "./estimator.js?v=6";
+import { APP_VERSION, CHANGELOG } from "./changelog.js?v=6";
 
 const $ = (id) => document.getElementById(id);
 
@@ -39,7 +39,7 @@ const logLines = [];
 function log(msg) {
   const line = `${new Date().toLocaleTimeString()} ${msg}`;
   logLines.push(line);
-  if (logLines.length > 400) logLines.shift();
+  if (logLines.length > 3000) logLines.shift();
   if ($("debug").open) $("log").textContent = logLines.join("\n");
 }
 $("debug").addEventListener("toggle", () => ($("log").textContent = logLines.join("\n")));
@@ -50,6 +50,10 @@ let latest = null; // last decoded telemetry
 let source = null; // PrimeBle or demo
 let wakeLock = null;
 let connState = "disconnected";
+let lastSampleAt = 0; // when the estimator last got a sample
+let shown = null; // countdown on screen, eased toward the estimate
+let shownMode = null;
+let shownAt = 0;
 
 const PORTS = [
   ["c1", "USB-C 1"],
@@ -81,6 +85,7 @@ function onTelemetry(params, cmd = "demo") {
   const p = t.ports;
   log(`${cmd} ${t.battery}% out=${out} in=${inn} c1=${p.c1.status}/${p.c1.watts}W c2=${p.c2.status}/${p.c2.watts}W a=${p.a.status}/${p.a.watts}W`);
   estimator.update(Date.now(), t.battery, out, inn);
+  lastSampleAt = Date.now();
   latest.out = out;
   latest.inn = inn;
   renderTelemetry();
@@ -169,7 +174,7 @@ function renderCountdown() {
   const e = estimator.estimate;
   if (!e || !latest) return;
   const hero = $("hero");
-  const secs = estimator.secondsAt(Date.now());
+  const secs = easedSeconds(e);
   const avg = Math.abs(e.netW);
   let cls = "card hero";
 
@@ -195,7 +200,38 @@ function renderCountdown() {
   hero.className = cls;
 }
 
-setInterval(renderCountdown, 1000);
+// The bank only sends a reading when something changes. While connected,
+// the last reading still holds, so feed it again every 2 s: that keeps the
+// average weighted by time rather than by how chatty the bank was.
+function holdLastReading() {
+  const now = Date.now();
+  if (connState !== "live" || !latest || now - lastSampleAt < 2000) return;
+  estimator.update(now, latest.battery, latest.out, latest.inn);
+  lastSampleAt = now;
+}
+
+// Count down one second per second and drift gently toward the estimate,
+// so small revisions never show up as jumps. Big changes (new load,
+// charging starts) snap straight to the new value.
+function easedSeconds(e) {
+  const now = Date.now();
+  const target = estimator.secondsAt(now);
+  const dt = (now - shownAt) / 1000;
+  shownAt = now;
+  if (target == null) return (shown = null);
+  if (shown == null || e.mode !== shownMode || Math.abs(target - shown) > Math.max(120, target * 0.15)) {
+    shownMode = e.mode;
+    return (shown = target);
+  }
+  shown = Math.max(0, shown - dt);
+  shown += (target - shown) * (1 - Math.exp(-dt / 20));
+  return shown;
+}
+
+setInterval(() => {
+  holdLastReading();
+  renderCountdown();
+}, 1000);
 
 // ------------------------------------------------------------- wake lock
 
@@ -221,6 +257,7 @@ document.addEventListener("visibilitychange", () => {
 async function connect(showAll) {
   stopDemo();
   estimator.reset();
+  shown = null;
   latest = null;
   const ble = new PrimeBle({ onStatus, onTelemetry, onLog: log });
   source = ble;
@@ -255,6 +292,7 @@ $("disconnect").addEventListener("click", () => {
 let demoTimer = null;
 function startDemo() {
   estimator.reset();
+  shown = null;
   latest = null;
   let soc = 64.3;
   let t = 0;

@@ -2,6 +2,16 @@
 // version is the app version shown in the footer.
 export const CHANGELOG = [
   {
+    version: 6,
+    date: "2026-09-23",
+    changes: [
+      "The countdown now ticks down smoothly one second at a time and eases into new estimates instead of jumping 30-60 seconds.",
+      "The average is now weighted by time. The bank only sends a reading when something changes, so bursts of readings no longer skew it.",
+      "Stopped sending the bank anything after connecting (no keep-alive or re-subscribe). One of those is the likely cause of the disconnects every 30-60 seconds.",
+      "Debug log keeps more history and notes, at each disconnect, how long before it the app last sent or received data.",
+    ],
+  },
+  {
     version: 5,
     date: "2026-09-23",
     changes: [
@@ -12,7 +22,7 @@ export const CHANGELOG = [
     version: 4,
     date: "2026-09-23",
     changes: [
-      "Sends a keep-alive to the bank every 9 seconds, which should stop the drop-and-reconnect about once a minute.",
+      "Sends a keep-alive to the bank every 9 seconds, which should stop the drop-and-reconnect about once a minute. (Removed in version 6: it didn't help.)",
       "A reconnect no longer restarts the 3-minute average; the countdown carries on through short dropouts.",
       "The learned battery capacity survives reconnects of up to 2 minutes.",
       "Debug log shows how long each connection stayed live.",

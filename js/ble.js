@@ -7,13 +7,12 @@ import {
   UUID_IDENTIFIER,
   UUID_SERVICE_CANDIDATES,
   UUID_TELEMETRY,
-} from "./protocol.js?v=5";
+} from "./protocol.js?v=6";
 
 const NEGOTIATION_RETRY_MS = 10000;
 const NEGOTIATION_TIMEOUT_MS = 60000;
 const RECONNECT_DELAY_MS = 3000;
-const STALE_MS = 20000; // no telemetry for this long -> re-request it
-const KEEP_ALIVE_MS = 9000;
+const QUIET_LOG_MS = 30000;
 
 export function bluetoothAvailable() {
   return typeof navigator !== "undefined" && !!navigator.bluetooth;
@@ -115,10 +114,11 @@ export class PrimeBle {
       onStage: (n) => this.status("negotiating", `step ${n + 1} of 8`),
       onNegotiated: () => {
         this.status("live");
-        this.connectedAt = this.lastTelemetryAt = this.lastKeepAlive = Date.now();
+        this.connectedAt = this.lastTelemetryAt = Date.now();
       },
       onTelemetry: (params, cmd) => {
         this.lastTelemetryAt = Date.now();
+        this.quietLogged = false;
         if (this.state !== "live") this.status("live");
         this.h.onTelemetry(params, cmd);
       },
@@ -157,21 +157,25 @@ export class PrimeBle {
       }
       return;
     }
-    if (now - this.lastKeepAlive >= KEEP_ALIVE_MS) {
-      this.lastKeepAlive = now;
-      s.keepAlive().catch((e) => this.log("keep-alive failed: " + e.message));
-    }
-    if (now - this.lastTelemetryAt > STALE_MS && now - (this.lastRetry || 0) > STALE_MS) {
-      this.lastRetry = now;
-      this.log("Telemetry went quiet, asking again");
-      s.requestTelemetry().catch((e) => this.log("request failed: " + e.message));
+    // The bank only sends readings when something changes, so silence is
+    // normal. Earlier versions re-sent the subscribe request (and later a
+    // 420b keep-alive) during quiet spells, and the bank kept dropping the
+    // link; now we only note it in the log.
+    if (now - this.lastTelemetryAt > QUIET_LOG_MS && !this.quietLogged) {
+      this.quietLogged = true;
+      this.log(`No readings for ${Math.round((now - this.lastTelemetryAt) / 1000)} s (normal if the load is steady)`);
     }
   }
 
   async onDisconnected() {
     clearInterval(this.watchdog);
     if (this.connectedAt) {
-      this.log(`Disconnected after ${Math.round((Date.now() - this.connectedAt) / 1000)} s live`);
+      const ago = (t) => (t ? `${Math.round((Date.now() - t) / 1000)} s ago` : "never");
+      const s = this.session || {};
+      this.log(
+        `Disconnected after ${Math.round((Date.now() - this.connectedAt) / 1000)} s live ` +
+          `(last received ${ago(s.lastPacketAt)}, last sent ${ago(s.lastSentAt)})`,
+      );
       this.connectedAt = null;
     }
     if (!this.wantConnected) {
