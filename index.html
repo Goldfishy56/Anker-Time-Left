@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Anker Time Left</title>
+<meta name="description" content="Live time-until-empty countdown for the Anker Prime Power Bank 20K 220W over Bluetooth.">
+<meta name="theme-color" content="#0f1115">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Time Left">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon.svg">
+<style>
+  :root {
+    --bg: #f4f5f7;
+    --card: #ffffff;
+    --text: #14161a;
+    --muted: #666c78;
+    --line: #e2e4e9;
+    --accent: #0a84ff;
+    --good: #1f9d55;
+    --warn: #c77700;
+    --bad: #d93025;
+    --track: #e7e9ee;
+    --radius: 18px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0f1115;
+      --card: #1a1d23;
+      --text: #f2f3f5;
+      --muted: #9aa1ad;
+      --line: #2a2e36;
+      --accent: #409cff;
+      --good: #3ecf7a;
+      --warn: #ffb340;
+      --bad: #ff6159;
+      --track: #2a2e36;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0f1115; --card: #1a1d23; --text: #f2f3f5; --muted: #9aa1ad; --line: #2a2e36;
+    --accent: #409cff; --good: #3ecf7a; --warn: #ffb340; --bad: #ff6159; --track: #2a2e36;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font: 16px/1.4 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+    padding: max(16px, env(safe-area-inset-top)) 16px max(24px, env(safe-area-inset-bottom));
+    -webkit-font-smoothing: antialiased;
+  }
+  main { max-width: 480px; margin: 0 auto; display: grid; gap: 14px; }
+  header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  h1 { font-size: 20px; margin: 0; letter-spacing: -0.01em; }
+  .pill {
+    font-size: 13px; padding: 4px 10px; border-radius: 999px;
+    background: var(--track); color: var(--muted); white-space: nowrap;
+  }
+  .pill.live { background: color-mix(in srgb, var(--good) 18%, transparent); color: var(--good); }
+  .pill.busy { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent); }
+  .pill.bad { background: color-mix(in srgb, var(--bad) 18%, transparent); color: var(--bad); }
+  .card { background: var(--card); border-radius: var(--radius); padding: 18px; border: 1px solid var(--line); }
+  .hero { text-align: center; padding: 26px 18px 22px; }
+  .hero .label { color: var(--muted); font-size: 15px; }
+  .countdown {
+    font-size: clamp(56px, 19vw, 88px); font-weight: 700; letter-spacing: -0.03em;
+    font-variant-numeric: tabular-nums; line-height: 1.05; margin: 6px 0 4px;
+  }
+  .hero.low .countdown { color: var(--warn); }
+  .hero.critical .countdown { color: var(--bad); }
+  .hero.charging .countdown { color: var(--good); }
+  .sub { color: var(--muted); font-size: 15px; min-height: 1.4em; }
+  .battery { margin-top: 18px; }
+  .bar { height: 12px; background: var(--track); border-radius: 999px; overflow: hidden; }
+  .bar > div { height: 100%; width: 0; background: var(--good); border-radius: 999px; transition: width .6s ease; }
+  .hero.low .bar > div { background: var(--warn); }
+  .hero.critical .bar > div { background: var(--bad); }
+  .battery-row { display: flex; justify-content: space-between; margin-top: 8px; font-size: 14px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .battery-row b { color: var(--text); font-size: 18px; }
+  .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .stat { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 12px; }
+  .stat .k { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+  .stat .v { font-size: 22px; font-weight: 650; font-variant-numeric: tabular-nums; margin-top: 2px; }
+  .stat .v small { font-size: 13px; font-weight: 500; color: var(--muted); }
+  .ports { display: grid; gap: 0; padding: 4px 18px; }
+  .port { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--line); gap: 12px; }
+  .port:last-child { border-bottom: 0; }
+  .port .name { font-weight: 600; }
+  .port .state { font-size: 13px; color: var(--muted); }
+  .port .state.out { color: var(--accent); }
+  .port .state.in { color: var(--good); }
+  .port .nums { text-align: right; font-variant-numeric: tabular-nums; }
+  .port .nums .w { font-weight: 650; }
+  .port .nums .va { font-size: 13px; color: var(--muted); }
+  .actions { display: grid; gap: 10px; }
+  button {
+    font: inherit; font-weight: 600; border: 0; border-radius: 14px; padding: 15px 16px;
+    background: var(--accent); color: #fff; cursor: pointer; width: 100%;
+  }
+  button.secondary { background: var(--track); color: var(--text); }
+  button.link { background: none; color: var(--accent); padding: 8px; font-weight: 500; }
+  button:disabled { opacity: .5; }
+  .notice { font-size: 15px; }
+  .notice.warn { border-color: color-mix(in srgb, var(--warn) 50%, var(--line)); }
+  .notice h2 { font-size: 16px; margin: 0 0 6px; }
+  .notice p { margin: 6px 0; color: var(--muted); }
+  .notice ol { margin: 6px 0 0; padding-left: 20px; color: var(--muted); }
+  details { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 0 18px; }
+  summary { padding: 14px 0; cursor: pointer; font-weight: 600; }
+  details[open] summary { border-bottom: 1px solid var(--line); margin-bottom: 12px; }
+  .field { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin: 10px 0; }
+  .field label { font-size: 15px; }
+  .field .hint { display: block; font-size: 12px; color: var(--muted); }
+  .field input { width: 96px; font: inherit; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--text); text-align: right; }
+  .muted { color: var(--muted); font-size: 13px; }
+  pre#log { font: 11px/1.4 ui-monospace, Menlo, monospace; white-space: pre-wrap; word-break: break-all; max-height: 260px; overflow: auto; color: var(--muted); margin: 0 0 12px; }
+  .hidden { display: none !important; }
+  footer { text-align: center; color: var(--muted); font-size: 12px; padding: 8px 0; }
+  footer a { color: inherit; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Time Left</h1>
+    <span id="status" class="pill">Not connected</span>
+  </header>
+
+  <section id="hero" class="card hero">
+    <div id="mode" class="label">Connect your power bank</div>
+    <div id="countdown" class="countdown">--:--</div>
+    <div id="sub" class="sub">Anker Prime 20K 220W</div>
+    <div class="battery">
+      <div class="bar"><div id="bar"></div></div>
+      <div class="battery-row"><span><b id="pct">--</b>%</span><span id="energy"></span></div>
+    </div>
+  </section>
+
+  <section class="stats">
+    <div class="stat"><div class="k">Out</div><div class="v"><span id="out">--</span> <small>W</small></div></div>
+    <div class="stat"><div class="k">In</div><div class="v"><span id="in">--</span> <small>W</small></div></div>
+    <div class="stat"><div class="k">Temp</div><div class="v"><span id="temp">--</span> <small>°C</small></div></div>
+  </section>
+
+  <section class="card ports hidden" id="ports"></section>
+
+  <section id="nobt" class="card notice warn hidden">
+    <h2>This browser can't use Bluetooth</h2>
+    <p>On iPhone, Safari and Chrome don't allow web pages to connect over Bluetooth. Use the free <b>Bluefy</b> browser instead:</p>
+    <ol>
+      <li>Install <b>Bluefy – Web BLE Browser</b> from the App Store.</li>
+      <li>Open this same page in Bluefy.</li>
+      <li>Fully close the Anker app first (it holds the Bluetooth connection).</li>
+    </ol>
+    <p><button class="secondary" id="copy-url">Copy this page's link</button></p>
+  </section>
+
+  <section class="actions">
+    <button id="connect">Connect to power bank</button>
+    <button id="disconnect" class="secondary hidden">Disconnect</button>
+    <button id="demo" class="secondary">Try demo mode</button>
+    <button id="show-all" class="link">Bank not in the list? Show all devices</button>
+  </section>
+
+  <details id="help">
+    <summary>Tips</summary>
+    <ul class="muted" style="padding-left:18px;margin-top:0">
+      <li>Close the Anker app completely before connecting. The bank only talks to one phone app at a time.</li>
+      <li>If it won't show up, press the bank's button once to wake Bluetooth.</li>
+      <li>Keep this page open on screen. iOS pauses Bluetooth for backgrounded pages; the screen is kept awake while connected.</li>
+      <li>The estimate is smoothed over about a minute, and it learns your bank's real capacity as the battery drains.</li>
+    </ul>
+  </details>
+
+  <details id="settings">
+    <summary>Settings</summary>
+    <div class="field"><label for="cap">Battery capacity<span class="hint">Wh, from the label</span></label><input id="cap" type="number" step="0.01" min="1" inputmode="decimal"></div>
+    <div class="field"><label for="eff">Output efficiency<span class="hint">% of stored energy that reaches your device</span></label><input id="eff" type="number" step="1" min="50" max="100" inputmode="numeric"></div>
+    <div class="field"><label for="smooth">Smoothing<span class="hint">seconds; higher = steadier, slower to react</span></label><input id="smooth" type="number" step="5" min="5" max="600" inputmode="numeric"></div>
+    <p class="muted" id="learned"></p>
+    <p><button class="secondary" id="reset-learned">Forget learned capacity</button></p>
+  </details>
+
+  <details id="debug">
+    <summary>Debug log</summary>
+    <pre id="log"></pre>
+    <p><button class="secondary" id="copy-log">Copy log</button></p>
+  </details>
+
+  <footer>Not affiliated with Anker. Protocol from <a href="https://github.com/flip-dots/SolixBLE">SolixBLE</a>.</footer>
+</main>
+<script type="module" src="js/app.js"></script>
+</body>
+</html>

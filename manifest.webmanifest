@@ -1,0 +1,10 @@
+{
+  "name": "Anker Time Left",
+  "short_name": "Time Left",
+  "description": "Live time-until-empty countdown for the Anker Prime Power Bank 20K 220W.",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#0f1115",
+  "theme_color": "#0f1115",
+  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+}
