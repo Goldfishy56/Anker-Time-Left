@@ -2,6 +2,16 @@
 // version is the app version shown in the footer.
 export const CHANGELOG = [
   {
+    version: 9,
+    date: "2026-09-23",
+    changes: [
+      "Charging now detected: your log showed the bank reports its charger input separately from the USB ports. The app now reads the bank's own input and output totals, and shows the charger (volts, amps, watts) in the port list.",
+      "While charging, the countdown uses the bank's own time-to-full estimate.",
+      "Battery is now read to 0.01 % (the bank sends hundredths), so the charge level and estimate are much more precise.",
+      "Disconnects: both of your logs show the bank sending one message about 30 seconds in and hanging up at 58 seconds when the app doesn't answer. The app now replies to it.",
+    ],
+  },
+  {
     version: 8,
     date: "2026-09-23",
     changes: [

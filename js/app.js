@@ -1,7 +1,7 @@
-import { PrimeBle, bluetoothAvailable } from "./ble.js?v=8";
-import { a110bProblem, decodeA110B, hex, PortStatus } from "./protocol.js?v=8";
-import { DEFAULTS, Estimator, formatDuration } from "./estimator.js?v=8";
-import { APP_VERSION, CHANGELOG } from "./changelog.js?v=8";
+import { PrimeBle, bluetoothAvailable } from "./ble.js?v=9";
+import { a110bProblem, decodeA110B, hex, PortStatus } from "./protocol.js?v=9";
+import { DEFAULTS, Estimator, formatDuration } from "./estimator.js?v=9";
+import { APP_VERSION, CHANGELOG } from "./changelog.js?v=9";
 
 const $ = (id) => document.getElementById(id);
 
@@ -55,6 +55,11 @@ let lastLiveAt = 0; // last moment we were connected and live
 let shown = null; // countdown on screen, eased toward the estimate
 let shownMode = null;
 let shownAt = 0;
+let finePct = false; // bank reports hundredths of a percent
+
+function estimatorOpts() {
+  return { precise: finePct, bankMinutesToFull: latest && latest.bankMinutesToFull };
+}
 
 const PORTS = [
   ["c1", "USB-C 1"],
@@ -62,26 +67,19 @@ const PORTS = [
   ["a", "USB-A"],
 ];
 
+// The bank reports its own input and output totals (a5/a6); use those.
+// Per-port figures are only a fallback, e.g. C1 is known to latch its last
+// wattage after unplugging.
 function portFlows(t) {
+  if (t.inW != null && t.reportedOutW != null) return { out: t.reportedOutW, inn: t.inW };
   let out = 0;
   let inn = 0;
-  let unknown = [];
-  for (const [key, name] of PORTS) {
+  for (const [key] of PORTS) {
     const p = t.ports[key];
     if (p.status === PortStatus.OUTPUT) out += p.watts;
     else if (p.status === PortStatus.INPUT) inn += p.watts;
-    else if (p.status !== PortStatus.OFF && p.watts > 0) {
-      // Not "off" and not "output" but power is flowing: on a power bank
-      // that can only be a charger. Seen statuses are logged to confirm.
-      inn += p.watts;
-      unknown.push(`${name} status ${p.status}`);
-    }
   }
-  // Fall back to the bank's own total only when no port reports anything;
-  // that total may include charging power, so never use it alongside ports.
-  const anyPort = PORTS.some(([key]) => t.ports[key].status !== PortStatus.OFF);
-  if (!anyPort && out === 0 && inn === 0 && t.reportedOutW) out = t.reportedOutW;
-  return { out, inn, unknown };
+  return { out, inn };
 }
 
 function onTelemetry(params, cmd = "demo") {
@@ -91,14 +89,18 @@ function onTelemetry(params, cmd = "demo") {
     return log(`ignored ${cmd} (${problem}): ${[...params].map(([k, v]) => k + "=" + hex(v)).join(" ")}`);
   }
   latest = t;
-  const { out, inn, unknown } = portFlows(t);
+  const { out, inn } = portFlows(t);
   const p = t.ports;
+  // The hundredths in a2 only count once we've seen them move off .00.
+  if (t.batteryFine != null && t.batteryFine % 1 !== 0) finePct = true;
+  latest.pct = finePct && t.batteryFine != null ? t.batteryFine : t.battery;
   log(
-    `${cmd} ${t.battery}% out=${out} in=${inn} total=${t.reportedOutW}W ` +
-      `c1=${p.c1.status}/${p.c1.volts}V/${p.c1.watts}W c2=${p.c2.status}/${p.c2.volts}V/${p.c2.watts}W a=${p.a.status}/${p.a.volts}V/${p.a.watts}W` +
-      (unknown.length ? ` (treated as charging: ${unknown.join(", ")})` : ""),
+    `${cmd} ${latest.pct}% out=${out} in=${inn}` +
+      (t.bankMinutesToFull != null ? ` bankFull=${t.bankMinutesToFull}m` : "") +
+      ` chg=${t.input.status}/${t.input.volts}V/${t.input.watts}W` +
+      ` c1=${p.c1.status}/${p.c1.watts}W c2=${p.c2.status}/${p.c2.watts}W a=${p.a.status}/${p.a.watts}W`,
   );
-  estimator.update(Date.now(), t.battery, out, inn);
+  estimator.update(Date.now(), latest.pct, out, inn, estimatorOpts());
   lastSampleAt = Date.now();
   latest.out = out;
   latest.inn = inn;
@@ -153,8 +155,8 @@ function fmtW(w) {
 
 function renderTelemetry() {
   const t = latest;
-  $("pct").textContent = t.battery;
-  $("bar").style.width = `${t.battery}%`;
+  $("pct").textContent = finePct ? t.pct.toFixed(1) : t.battery;
+  $("bar").style.width = `${t.pct}%`;
   $("out").textContent = fmtW(t.out);
   $("in").textContent = fmtW(t.inn);
   $("temp").textContent = t.temperature ?? "--";
@@ -162,8 +164,10 @@ function renderTelemetry() {
   $("energy").textContent = e && e.remainingWh != null ? `≈ ${e.remainingWh.toFixed(1)} Wh usable` : "";
 
   $("ports").classList.remove("hidden");
-  $("ports").innerHTML = PORTS.map(([key, name]) => {
-    const p = t.ports[key];
+  const rows = [...PORTS];
+  if (t.input.status > 0 || t.inW > 0) rows.unshift(["input", "Charger"]);
+  $("ports").innerHTML = rows.map(([key, name]) => {
+    const p = key === "input" ? { ...t.input, status: PortStatus.INPUT } : t.ports[key];
     const [label, cls] =
       p.status === PortStatus.OUTPUT
         ? ["Powering a device", "out"]
@@ -171,10 +175,8 @@ function renderTelemetry() {
           ? ["Charging the bank", "in"]
           : p.status === PortStatus.OFF
             ? ["Nothing plugged in", ""]
-            : p.watts > 0
-              ? ["Charging the bank", "in"]
-              : [`Status ${p.status}`, ""];
-    const active = p.status === PortStatus.OUTPUT || p.status === PortStatus.INPUT || (p.status !== PortStatus.OFF && p.watts > 0);
+            : [`Status ${p.status}`, ""];
+    const active = p.status === PortStatus.OUTPUT || p.status === PortStatus.INPUT;
     return `<div class="port">
       <div><div class="name">${name}</div><div class="state ${cls}">${label}</div></div>
       <div class="nums">${
@@ -206,7 +208,9 @@ function renderCountdown() {
     $("mode").textContent = "until full";
     $("countdown").textContent = formatDuration(secs);
     const at = new Date(Date.now() + secs * 1000);
-    $("sub").textContent = `Full around ${at.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })} · ${fmtW(avg)} W in`;
+    $("sub").textContent =
+      `Full around ${at.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })} · ${fmtW(avg)} W in` +
+      (e.source === "bank" ? " · bank's estimate" : "");
     cls += " charging";
   } else {
     $("mode").textContent = "Nothing is drawing power";
@@ -225,7 +229,7 @@ function renderCountdown() {
 function holdLastReading() {
   const now = Date.now();
   if (connState !== "live" || !latest || now - lastSampleAt < 2000) return;
-  estimator.update(now, latest.battery, latest.out, latest.inn);
+  estimator.update(now, latest.pct, latest.out, latest.inn, estimatorOpts());
   lastSampleAt = now;
 }
 
@@ -277,6 +281,7 @@ async function connect(showAll) {
   stopDemo();
   estimator.reset();
   shown = null;
+  finePct = false;
   latest = null;
   const ble = new PrimeBle({ onStatus, onTelemetry, onLog: log });
   source = ble;
@@ -312,6 +317,7 @@ let demoTimer = null;
 function startDemo() {
   estimator.reset();
   shown = null;
+  finePct = false;
   latest = null;
   let soc = 64.3;
   let t = 0;

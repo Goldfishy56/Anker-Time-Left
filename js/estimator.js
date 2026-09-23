@@ -66,9 +66,14 @@ export class Estimator {
    * @param {number} pct    battery percent (integer)
    * @param {number} outW   watts leaving the bank
    * @param {number} inW    watts entering the bank
+   * @param {object} [opts]
+   *   precise: pct has real sub-percent resolution (use it as-is)
+   *   bankMinutesToFull: the bank's own time-to-full, used while charging
    * @returns estimate object (see below)
    */
-  update(t, pct, outW, inW) {
+  update(t, pct, outW, inW, opts = {}) {
+    this.precise = !!opts.precise;
+    this.bankMinutesToFull = opts.bankMinutesToFull ?? null;
     const net = outW - inW;
     const dt = this.lastT == null ? 0 : (t - this.lastT) / 1000;
     const gap = dt > this.s.averageSeconds;
@@ -78,7 +83,7 @@ export class Estimator {
 
     // Interpolate state of charge between whole-percent readings.
     const whPerPct = this.whPerPct;
-    if (this.soc == null || gap || pct == null) {
+    if (this.precise || this.soc == null || gap || pct == null) {
       this.soc = pct;
     } else if (pct !== this.pct) {
       // Just crossed a boundary: assume the bank rounds, so we sit at x.5.
@@ -91,7 +96,9 @@ export class Estimator {
       const cellPctPerWh = w >= 0 ? 1 / whPerPct : this.s.chargeEfficiency / (this.s.capacityWh / 100);
       this.soc -= wh * cellPctPerWh;
     }
-    if (pct != null) this.soc = Math.min(100, Math.max(pct - 0.5, Math.min(pct + 0.99, this.soc)));
+    if (pct != null && !this.precise) {
+      this.soc = Math.min(100, Math.max(pct - 0.5, Math.min(pct + 0.99, this.soc)));
+    }
 
     this.learn(pct, outW, inW, dt, gap);
 
@@ -138,6 +145,12 @@ export class Estimator {
       if (pct > this.anchor.pct) this.anchor = null;
       else this.deliveredWh += (outW * dt) / 3600;
     }
+    if (this.precise && !this.anchor) {
+      // Fine-grained %: measure from any point, no need to wait for a boundary.
+      this.anchor = { pct };
+      this.deliveredWh = 0;
+      return;
+    }
     if (this.pct == null || pct >= this.pct) return;
 
     // Just crossed a % boundary.
@@ -170,6 +183,10 @@ export class Estimator {
     const remainingWh = soc * this.whPerPct;
     if (netW > MIN_LOAD_W) {
       return { mode: "discharging", seconds: (remainingWh / netW) * 3600, at: t, soc, remainingWh, netW };
+    }
+    if (netW < -MIN_LOAD_W && this.bankMinutesToFull) {
+      // The bank knows its own charge curve; trust its figure.
+      return { mode: "charging", seconds: this.bankMinutesToFull * 60, at: t, soc, remainingWh, netW, source: "bank" };
     }
     if (netW < -MIN_LOAD_W) {
       // Charging: roughly linear to ~90 %, then the CV phase tapers. Pad the

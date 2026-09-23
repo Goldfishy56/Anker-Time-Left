@@ -118,3 +118,22 @@ test("a very long gap starts fresh", () => {
   const e = est.update(600000, 55, 10, 0);
   assert.equal(e.netW, 10);
 });
+
+test("charging uses the bank's own time to full when given", () => {
+  const e = new Estimator().update(0, 9.5, 0, 95, { precise: true, bankMinutesToFull: 54 });
+  assert.equal(e.mode, "charging");
+  assert.equal(e.seconds, 54 * 60);
+  assert.equal(e.source, "bank");
+});
+
+test("precise % is used as-is and still learns capacity", () => {
+  const est = new Estimator();
+  const trueWhPerPct = 0.5;
+  let pct = 60;
+  for (let t = 0; t <= 3600; t += 2) {
+    est.update(t * 1000, Math.round(pct * 100) / 100, 30, 0, { precise: true });
+    pct -= (30 * 2) / 3600 / trueWhPerPct;
+  }
+  assert.ok(Math.abs(est.soc - Math.round(pct * 100) / 100) < 0.2, `soc ${est.soc} vs ${pct}`);
+  assert.ok(est.learned && Math.abs(est.learned.whPerPct - trueWhPerPct) < 0.02, `learned ${est.learned && est.learned.whPerPct}`);
+});

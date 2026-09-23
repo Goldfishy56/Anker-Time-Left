@@ -331,6 +331,16 @@ export class PrimeSession {
         this.snapshotSeen = true;
         return;
       }
+      if (cmd === "0223") {
+        // The bank sends this once ~25-35 s into a session and drops the link
+        // at ~58 s if nothing answers. Reply the way it answers our requests:
+        // same command with the 0x08 "reply" bit (0a23), encrypted (0x40).
+        this.onLog(`bank request 0223 (${fields}); replying 4a23`);
+        return this.send(TELEMETRY_PATTERN_OUT, "4a23", [
+          ["a1", fromHex("21")],
+          ["fe", timestamp()],
+        ]);
+      }
       this.onLog(`unhandled ${pattern}/${cmd}: ${fields}`);
     }
   }
@@ -444,15 +454,40 @@ export function a110bProblem(t, params) {
   return null;
 }
 
-/** Decode Anker Prime Power Bank 20K 220W (A110B) telemetry. */
+/**
+ * Decode Anker Prime Power Bank 20K 220W (A110B) telemetry (0300 stream).
+ *
+ * Layout confirmed from real captures (2026-09), charging and discharging:
+ *   a2  battery: [1] whole %, [2] hundredths
+ *   a3  bank's own time-to-full while charging: [2] hours, [3] minutes
+ *       (23:59 while it's still working it out)
+ *   a5  total input:  [1] active, [2..4] W/10
+ *   a6  total output: [1] active, [2..4] W/10
+ *   a7  charger input port:  [1] status, V/10, A/10, W/10
+ *   a8/a9/ac  USB-C1 / USB-C2 / USB-A: [1] status, V/10, A/10, W/10
+ *   af  temperature, C
+ */
 export function decodeA110B(params) {
   const a2 = params.get("a2");
+  const a3 = params.get("a3");
+  const a5 = params.get("a5");
   const a6 = params.get("a6");
   const af = params.get("af");
+  const total = (v) => (v && v.length >= 4 ? readInt(v, 2, 4) / 10 : null);
+  let bankMinutesToFull = null;
+  if (a3 && a3.length >= 4 && a3[1] === 1) {
+    const [h, m] = [a3[2], a3[3]];
+    if (!(h === 23 && m === 59) && m < 60 && h * 60 + m > 0) bankMinutesToFull = h * 60 + m;
+  }
   return {
     battery: a2 && a2.length >= 2 ? a2[1] : null,
-    reportedOutW: a6 && a6.length >= 4 ? readInt(a6, 2, 4) / 10 : null,
+    // Hundredths are present in the 3-byte form of a2.
+    batteryFine: a2 && a2.length >= 3 && a2[2] < 100 ? a2[1] + a2[2] / 100 : null,
+    inW: total(a5),
+    reportedOutW: total(a6),
+    bankMinutesToFull,
     temperature: af && af.length >= 2 ? readInt(af, 1, af.length, true) : null,
+    input: port(params, "a7"),
     ports: { c1: port(params, "a8"), c2: port(params, "a9"), a: port(params, "ac") },
   };
 }

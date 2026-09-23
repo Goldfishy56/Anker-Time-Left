@@ -221,3 +221,46 @@ test("the 0a00 status reply is read as plain text, not as telemetry", async () =
   assert.equal(got.length, 0);
   assert.ok(logs.some((l) => l.startsWith("status reply 0a00: a1=31 a2=02ab06")), logs.join("\n"));
 });
+
+// Captured while the bank was charging at ~95 W (2026-09).
+const REAL_CHARGING =
+  "ff0973000301110300a10131a203040851a30404010037a4020101a5040401b603a60404000000a7080401d8002b00b603a80f0400000000003800ff00ffffffff00a90f0400000000000000ff00ffffffff00ac09040000000000000000af02011eb002011fb103022a00fe05030000000074";
+const REAL_CHARGE_RAMP =
+  "ff0973000301110300a10131a203040936a3040401173ba4020101a50404010000a60404000000a70804003f0000000000a80f0400000000003800ff00ffffffff00a90f0400000000000000ff00ffffffff00ac09040000000000000000af02011fb0020120b103022a00fe050300000000fa";
+const REAL_0223 = "ff0919000301110223a10131a203045553a30503000000004a";
+
+const decodeRaw = (h) => P.decodeA110B(P.parseParams(P.parsePacket(P.fromHex(h)).payload));
+
+test("decodes charging: input total, charger port, fine battery, bank's time to full", () => {
+  const t = decodeRaw(REAL_CHARGING);
+  assert.equal(t.battery, 8);
+  assert.equal(t.batteryFine, 8.81);
+  assert.equal(t.inW, 95);
+  assert.equal(t.reportedOutW, 0);
+  assert.deepEqual(t.input, { status: 1, volts: 21.6, amps: 4.3, watts: 95 });
+  assert.equal(t.bankMinutesToFull, 55);
+});
+
+test("ignores the bank's 23:59 placeholder while charging ramps up", () => {
+  assert.equal(decodeRaw(REAL_CHARGE_RAMP).bankMinutesToFull, null);
+});
+
+test("discharging capture: output total, no input, no time to full", () => {
+  const t = decodeRaw(REAL_0300);
+  assert.equal(t.inW, 0);
+  assert.equal(t.reportedOutW, 5.9);
+  assert.equal(t.batteryFine, 80);
+  assert.equal(t.bankMinutesToFull, null);
+});
+
+test("answers the bank's 0223 request with an encrypted 4a23", async () => {
+  const written = [];
+  const session = new P.PrimeSession({ write: (b) => written.push(b) });
+  session.sharedSecret = new Uint8Array(32);
+  await session.handleNotification(P.fromHex(REAL_0223));
+  assert.equal(written.length, 1);
+  const pkt = P.parsePacket(written[0]);
+  assert.equal(pkt.pattern + "/" + pkt.cmd, "03000f/4a23");
+  const plain = await P.gcmDecrypt(session.key, session.nonce, pkt.payload);
+  assert.equal(P.hex(P.parseParams(plain).get("a1")), "21");
+});

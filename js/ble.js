@@ -7,7 +7,7 @@ import {
   UUID_IDENTIFIER,
   UUID_SERVICE_CANDIDATES,
   UUID_TELEMETRY,
-} from "./protocol.js?v=8";
+} from "./protocol.js?v=9";
 
 const NEGOTIATION_RETRY_MS = 10000;
 const NEGOTIATION_TIMEOUT_MS = 60000;
