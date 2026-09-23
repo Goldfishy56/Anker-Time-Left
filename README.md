@@ -46,6 +46,10 @@ python3 -m http.server 8000   # then open http://localhost:8000
 node --test                   # protocol + estimator tests
 ```
 
+### Releasing a new version
+
+Add an entry at the top of `js/changelog.js`, then bump every `?v=` in `index.html`, `js/app.js` and `js/ble.js` to the new number (the query string stops phones running cached scripts). `node --test` fails if the two don't match.
+
 ## Project layout
 
 | File | What it does |
@@ -54,6 +58,7 @@ node --test                   # protocol + estimator tests
 | `js/ble.js` | Web Bluetooth connection, handshake retries, auto-reconnect |
 | `js/estimator.js` | Smoothing, calibration and the time-left maths |
 | `js/app.js` | UI, demo mode, settings |
+| `js/changelog.js` | The in-app "What's new" list; its newest entry sets the app version |
 | `test/` | Tests, including real captured packets from SolixBLE |
 
 ## Credits

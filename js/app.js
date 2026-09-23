@@ -1,6 +1,7 @@
-import { PrimeBle, bluetoothAvailable } from "./ble.js?v=4";
-import { a110bProblem, decodeA110B, hex, PortStatus } from "./protocol.js?v=4";
-import { DEFAULTS, Estimator, formatDuration } from "./estimator.js?v=4";
+import { PrimeBle, bluetoothAvailable } from "./ble.js?v=5";
+import { a110bProblem, decodeA110B, hex, PortStatus } from "./protocol.js?v=5";
+import { DEFAULTS, Estimator, formatDuration } from "./estimator.js?v=5";
+import { APP_VERSION, CHANGELOG } from "./changelog.js?v=5";
 
 const $ = (id) => document.getElementById(id);
 
@@ -335,6 +336,29 @@ async function copy(text, button) {
 }
 $("copy-url").addEventListener("click", (e) => copy(location.href, e.currentTarget));
 $("copy-log").addEventListener("click", (e) => copy(logLines.join("\n"), e.currentTarget));
+
+// ------------------------------------------------------------- change log
+
+function renderChangelog() {
+  const esc = (t) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+  const date = (d) =>
+    new Date(d + "T12:00:00").toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" });
+  $("version").textContent = APP_VERSION;
+  $("changelog").innerHTML = CHANGELOG.map(
+    (r) => `<div class="release">
+      <h3>Version ${r.version}<span>${date(r.date)}</span></h3>
+      <ul>${r.changes.map((c) => `<li>${esc(c)}</li>`).join("")}</ul>
+    </div>`,
+  ).join("");
+  // Open it once after an update, then remember that it was seen.
+  const seen = store.get("seenVersion", 0);
+  if (seen < APP_VERSION) {
+    $("changes").open = true;
+    $("new-badge").classList.remove("hidden");
+    store.set("seenVersion", APP_VERSION);
+  }
+}
+renderChangelog();
 
 if (!bluetoothAvailable()) {
   $("nobt").classList.remove("hidden");

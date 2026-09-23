@@ -119,6 +119,13 @@
   .muted { color: var(--muted); font-size: 13px; }
   pre#log { font: 11px/1.4 ui-monospace, Menlo, monospace; white-space: pre-wrap; word-break: break-all; max-height: 260px; overflow: auto; color: var(--muted); margin: 0 0 12px; }
   .hidden { display: none !important; }
+  .badge { font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 999px; margin-left: 6px; background: var(--accent); color: #fff; vertical-align: 1px; }
+  .release { padding-bottom: 12px; }
+  .release + .release { border-top: 1px solid var(--line); padding-top: 12px; }
+  .release h3 { font-size: 15px; margin: 0; }
+  .release h3 span { font-weight: 400; color: var(--muted); font-size: 13px; margin-left: 6px; }
+  .release ul { margin: 6px 0 0; padding-left: 18px; color: var(--muted); font-size: 14px; }
+  .release li + li { margin-top: 4px; }
   footer { text-align: center; color: var(--muted); font-size: 12px; padding: 8px 0; }
   footer a { color: inherit; }
 </style>
@@ -166,6 +173,11 @@
     <button id="show-all" class="link">Bank not in the list? Show all devices</button>
   </section>
 
+  <details id="changes">
+    <summary>What's new <span id="new-badge" class="badge hidden">New</span></summary>
+    <div id="changelog"></div>
+  </details>
+
   <details id="help">
     <summary>Tips</summary>
     <ul class="muted" style="padding-left:18px;margin-top:0">
@@ -191,8 +203,8 @@
     <p><button class="secondary" id="copy-log">Copy log</button></p>
   </details>
 
-  <footer>Version 4 · Not affiliated with Anker. Protocol from <a href="https://github.com/flip-dots/SolixBLE">SolixBLE</a>.</footer>
+  <footer>Version <span id="version"></span> · Not affiliated with Anker. Protocol from <a href="https://github.com/flip-dots/SolixBLE">SolixBLE</a>.</footer>
 </main>
-<script type="module" src="js/app.js?v=4"></script>
+<script type="module" src="js/app.js?v=5"></script>
 </body>
 </html>
