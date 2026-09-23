@@ -1,6 +1,6 @@
-import { PrimeBle, bluetoothAvailable } from "./ble.js?v=3";
-import { a110bProblem, decodeA110B, hex, PortStatus } from "./protocol.js?v=3";
-import { DEFAULTS, Estimator, formatDuration } from "./estimator.js?v=3";
+import { PrimeBle, bluetoothAvailable } from "./ble.js?v=4";
+import { a110bProblem, decodeA110B, hex, PortStatus } from "./protocol.js?v=4";
+import { DEFAULTS, Estimator, formatDuration } from "./estimator.js?v=4";
 
 const $ = (id) => document.getElementById(id);
 

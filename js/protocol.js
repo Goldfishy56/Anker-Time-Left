@@ -375,6 +375,18 @@ export class PrimeSession {
     }
   }
 
+  /**
+   * Re-arm the telemetry stream. Other Prime devices stop streaming (and
+   * eventually drop the link) unless this arrives every ~10 s; SolixBLE
+   * sends the same command to the Prime chargers.
+   */
+  async keepAlive() {
+    await this.send(TELEMETRY_PATTERN_OUT, "420b", [
+      ["a1", fromHex("21")],
+      ["fe", timestamp()],
+    ]);
+  }
+
   /** Ask the device to (keep) streaming telemetry. */
   async requestTelemetry() {
     await this.send(TELEMETRY_PATTERN_OUT, "4200", [

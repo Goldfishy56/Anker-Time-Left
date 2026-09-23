@@ -19,7 +19,9 @@ export const DEFAULTS = {
 
 const MIN_LOAD_W = 0.3; // below this the bank is effectively idle
 const LEARN_MIN_DROP = 3; // % drop needed before trusting a measured Wh/%
-const MAX_GAP_S = 30; // longer telemetry gaps reset integration
+// Short gaps (e.g. a Bluetooth reconnect) are bridged using the average
+// power; only a gap longer than the averaging window starts from scratch.
+const LEARN_MAX_GAP_S = 120;
 // A new load is adopted early only if every sample for this long sits on the
 // same side of the running average, by a clear margin (plug/unplug, not noise).
 const SHIFT_SECONDS = 30;
@@ -69,7 +71,7 @@ export class Estimator {
   update(t, pct, outW, inW) {
     const net = outW - inW;
     const dt = this.lastT == null ? 0 : (t - this.lastT) / 1000;
-    const gap = dt > MAX_GAP_S;
+    const gap = dt > this.s.averageSeconds;
 
     this.netW = this.average(t, net, gap);
     this.instantNetW = net;
@@ -82,8 +84,11 @@ export class Estimator {
       // Just crossed a boundary: assume the bank rounds, so we sit at x.5.
       this.soc = pct < this.pct ? pct + 0.5 : pct - 0.5;
     } else if (dt > 0) {
-      const wh = (this.instantNetW * dt) / 3600;
-      const cellPctPerWh = net >= 0 ? 1 / whPerPct : this.s.chargeEfficiency / (this.s.capacityWh / 100);
+      // Over a longer gap (reconnect) the average is a better guess than the
+      // latest reading.
+      const w = dt > 10 ? this.netW : this.instantNetW;
+      const wh = (w * dt) / 3600;
+      const cellPctPerWh = w >= 0 ? 1 / whPerPct : this.s.chargeEfficiency / (this.s.capacityWh / 100);
       this.soc -= wh * cellPctPerWh;
     }
     if (pct != null) this.soc = Math.min(100, Math.max(pct - 0.5, Math.min(pct + 0.99, this.soc)));
@@ -100,7 +105,7 @@ export class Estimator {
   // renegotiating, laptops idling) average out; a sustained change in load
   // restarts the window so the estimate still follows it within ~30 s.
   average(t, net, gap) {
-    if (gap) this.samples = [];
+    if (gap) this.samples = []; // older than the whole window anyway
     this.samples.push({ t, net });
     const windowStart = t - this.s.averageSeconds * 1000;
     while (this.samples.length > 1 && this.samples[0].t < windowStart) this.samples.shift();
@@ -125,7 +130,7 @@ export class Estimator {
   // Measure how many output Wh the bank really delivers per 1 % it drops,
   // between two whole-percent boundaries, while not charging.
   learn(pct, outW, inW, dt, gap) {
-    if (pct == null || inW > 0.5 || gap) {
+    if (pct == null || inW > 0.5 || gap || dt > LEARN_MAX_GAP_S) {
       this.anchor = null;
       return;
     }

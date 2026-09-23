@@ -7,12 +7,13 @@ import {
   UUID_IDENTIFIER,
   UUID_SERVICE_CANDIDATES,
   UUID_TELEMETRY,
-} from "./protocol.js?v=3";
+} from "./protocol.js?v=4";
 
 const NEGOTIATION_RETRY_MS = 10000;
 const NEGOTIATION_TIMEOUT_MS = 60000;
 const RECONNECT_DELAY_MS = 3000;
 const STALE_MS = 20000; // no telemetry for this long -> re-request it
+const KEEP_ALIVE_MS = 9000;
 
 export function bluetoothAvailable() {
   return typeof navigator !== "undefined" && !!navigator.bluetooth;
@@ -114,7 +115,7 @@ export class PrimeBle {
       onStage: (n) => this.status("negotiating", `step ${n + 1} of 8`),
       onNegotiated: () => {
         this.status("live");
-        this.lastTelemetryAt = Date.now();
+        this.connectedAt = this.lastTelemetryAt = this.lastKeepAlive = Date.now();
       },
       onTelemetry: (params, cmd) => {
         this.lastTelemetryAt = Date.now();
@@ -156,6 +157,10 @@ export class PrimeBle {
       }
       return;
     }
+    if (now - this.lastKeepAlive >= KEEP_ALIVE_MS) {
+      this.lastKeepAlive = now;
+      s.keepAlive().catch((e) => this.log("keep-alive failed: " + e.message));
+    }
     if (now - this.lastTelemetryAt > STALE_MS && now - (this.lastRetry || 0) > STALE_MS) {
       this.lastRetry = now;
       this.log("Telemetry went quiet, asking again");
@@ -165,6 +170,10 @@ export class PrimeBle {
 
   async onDisconnected() {
     clearInterval(this.watchdog);
+    if (this.connectedAt) {
+      this.log(`Disconnected after ${Math.round((Date.now() - this.connectedAt) / 1000)} s live`);
+      this.connectedAt = null;
+    }
     if (!this.wantConnected) {
       if (this.state !== "error") this.status("disconnected");
       return;

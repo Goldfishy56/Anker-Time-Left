@@ -181,4 +181,11 @@ test("full negotiation against a simulated device, then telemetry", async () => 
   assert.equal(session.mtu, 253);
   assert.equal(telemetry[0].battery, 66);
   assert.equal(telemetry[0].ports.c1.watts, 10);
+
+  // Keep-alive is an encrypted 420b the device can read.
+  sent.length = 0;
+  await session.keepAlive();
+  for (let i = 0; i < 20 && !sent.length; i++) await new Promise((r) => setTimeout(r, 10));
+  assert.deepEqual(errors, []);
+  assert.deepEqual(sent, ["420b"]);
 });

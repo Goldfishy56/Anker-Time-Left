@@ -96,3 +96,25 @@ test("charging reports time to full", () => {
 test("idle when nothing is plugged in", () => {
   assert.equal(new Estimator().update(0, 50, 0, 0).mode, "idle");
 });
+
+test("a quick reconnect keeps the running average and the estimate", () => {
+  const est = new Estimator();
+  // Alternate 10 W / 30 W (average 20 W) for 3 minutes.
+  for (let t = 0; t < 180; t += 2) est.update(t * 1000, 60, t % 4 ? 30 : 10, 0);
+  const before = est.estimate;
+  const samplesBefore = est.samples.length;
+  // 45 s with no data while Bluetooth reconnects, then a 10 W reading.
+  const after = est.update(225000, 60, 10, 0);
+  assert.ok(est.samples.length > samplesBefore / 2, "average kept its history");
+  assert.ok(Math.abs(after.netW - 20) < 1, `netW ${after.netW}`);
+  // The countdown carries on from where it was, minus the elapsed time.
+  const expected = before.seconds - 45;
+  assert.ok(Math.abs(after.seconds - expected) / expected < 0.03, `${after.seconds} vs ${expected}`);
+});
+
+test("a very long gap starts fresh", () => {
+  const est = new Estimator();
+  for (let t = 0; t < 180; t += 2) est.update(t * 1000, 60, 50, 0);
+  const e = est.update(600000, 55, 10, 0);
+  assert.equal(e.netW, 10);
+});
