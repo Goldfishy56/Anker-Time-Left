@@ -1,7 +1,7 @@
-import { PrimeBle, bluetoothAvailable } from "./ble.js?v=7";
-import { a110bProblem, decodeA110B, hex, PortStatus } from "./protocol.js?v=7";
-import { DEFAULTS, Estimator, formatDuration } from "./estimator.js?v=7";
-import { APP_VERSION, CHANGELOG } from "./changelog.js?v=7";
+import { PrimeBle, bluetoothAvailable } from "./ble.js?v=8";
+import { a110bProblem, decodeA110B, hex, PortStatus } from "./protocol.js?v=8";
+import { DEFAULTS, Estimator, formatDuration } from "./estimator.js?v=8";
+import { APP_VERSION, CHANGELOG } from "./changelog.js?v=8";
 
 const $ = (id) => document.getElementById(id);
 
@@ -65,14 +65,23 @@ const PORTS = [
 function portFlows(t) {
   let out = 0;
   let inn = 0;
-  for (const [key] of PORTS) {
+  let unknown = [];
+  for (const [key, name] of PORTS) {
     const p = t.ports[key];
     if (p.status === PortStatus.OUTPUT) out += p.watts;
     else if (p.status === PortStatus.INPUT) inn += p.watts;
+    else if (p.status !== PortStatus.OFF && p.watts > 0) {
+      // Not "off" and not "output" but power is flowing: on a power bank
+      // that can only be a charger. Seen statuses are logged to confirm.
+      inn += p.watts;
+      unknown.push(`${name} status ${p.status}`);
+    }
   }
-  // Fall back to the bank's own total if per-port status is missing.
-  if (out === 0 && inn === 0 && t.reportedOutW) out = t.reportedOutW;
-  return { out, inn };
+  // Fall back to the bank's own total only when no port reports anything;
+  // that total may include charging power, so never use it alongside ports.
+  const anyPort = PORTS.some(([key]) => t.ports[key].status !== PortStatus.OFF);
+  if (!anyPort && out === 0 && inn === 0 && t.reportedOutW) out = t.reportedOutW;
+  return { out, inn, unknown };
 }
 
 function onTelemetry(params, cmd = "demo") {
@@ -82,9 +91,13 @@ function onTelemetry(params, cmd = "demo") {
     return log(`ignored ${cmd} (${problem}): ${[...params].map(([k, v]) => k + "=" + hex(v)).join(" ")}`);
   }
   latest = t;
-  const { out, inn } = portFlows(t);
+  const { out, inn, unknown } = portFlows(t);
   const p = t.ports;
-  log(`${cmd} ${t.battery}% out=${out} in=${inn} c1=${p.c1.status}/${p.c1.watts}W c2=${p.c2.status}/${p.c2.watts}W a=${p.a.status}/${p.a.watts}W`);
+  log(
+    `${cmd} ${t.battery}% out=${out} in=${inn} total=${t.reportedOutW}W ` +
+      `c1=${p.c1.status}/${p.c1.volts}V/${p.c1.watts}W c2=${p.c2.status}/${p.c2.volts}V/${p.c2.watts}W a=${p.a.status}/${p.a.volts}V/${p.a.watts}W` +
+      (unknown.length ? ` (treated as charging: ${unknown.join(", ")})` : ""),
+  );
   estimator.update(Date.now(), t.battery, out, inn);
   lastSampleAt = Date.now();
   latest.out = out;
@@ -158,8 +171,10 @@ function renderTelemetry() {
           ? ["Charging the bank", "in"]
           : p.status === PortStatus.OFF
             ? ["Nothing plugged in", ""]
-            : ["Unknown", ""];
-    const active = p.status === PortStatus.OUTPUT || p.status === PortStatus.INPUT;
+            : p.watts > 0
+              ? ["Charging the bank", "in"]
+              : [`Status ${p.status}`, ""];
+    const active = p.status === PortStatus.OUTPUT || p.status === PortStatus.INPUT || (p.status !== PortStatus.OFF && p.watts > 0);
     return `<div class="port">
       <div><div class="name">${name}</div><div class="state ${cls}">${label}</div></div>
       <div class="nums">${

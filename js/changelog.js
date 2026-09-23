@@ -2,6 +2,15 @@
 // version is the app version shown in the footer.
 export const CHANGELOG = [
   {
+    version: 8,
+    date: "2026-09-23",
+    changes: [
+      "Charging detection: readings with a port status the app didn't recognise were thrown away, which could freeze the screen while charging. They're now kept, and a port with power flowing that isn't marked as an output is treated as charging the bank.",
+      "The bank's total-power figure is no longer counted as output when a port is in use, since it may include charging power.",
+      "Debug log shows voltage and the bank's total power for every reading, to help pin down how this bank reports charging.",
+    ],
+  },
+  {
     version: 7,
     date: "2026-09-23",
     changes: [

@@ -438,7 +438,7 @@ export function a110bProblem(t, params) {
   if (missing.length) return "missing " + missing.join(",");
   if (t.battery == null || t.battery > 100) return "battery " + t.battery;
   for (const [name, p] of Object.entries(t.ports)) {
-    if (p.status < 0 || p.status > 2) return `${name} status ${p.status}`;
+    if (p.status < 0) return `${name} status ${p.status}`;
     if (p.volts > 50 || p.watts > 250) return `${name} ${p.volts}V ${p.watts}W`;
   }
   return null;
