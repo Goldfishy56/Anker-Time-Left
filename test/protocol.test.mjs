@@ -182,10 +182,42 @@ test("full negotiation against a simulated device, then telemetry", async () => 
   assert.equal(telemetry[0].battery, 66);
   assert.equal(telemetry[0].ports.c1.watts, 10);
 
-  // Keep-alive is an encrypted 420b the device can read.
+  // Heartbeat is an encrypted 4200 status request the device can read.
   sent.length = 0;
-  await session.keepAlive();
+  await session.heartbeat();
   for (let i = 0; i < 20 && !sent.length; i++) await new Promise((r) => setTimeout(r, 10));
   assert.deepEqual(errors, []);
-  assert.deepEqual(sent, ["420b"]);
+  assert.deepEqual(sent, ["4200"]);
+});
+
+// Real packets from an A110B (firmware as of 2026-09), captured by the app.
+const REAL_0300 =
+  "ff0973000301110300a10131a203045000a30404010000a4020101a50404000000a60404013b00a7080400fa0000000000a80f0400000000003800ff00ffffffff00a90f040132000b003b000007ffffffff00ac09040033000000000000af02011cb002011db103022a00fe050300000000b1";
+const REAL_0A00 =
+  "ff09d2000301110a0000a10131a20302ab06a303020700a403020000a5020100a603045000a70404010000a802011ca9020164aa020164ab020180ac0302dc05ad020100ae0b04a8e259cb1d8000000000af020100b0020100b1020100b20404000000b30404013b00b4080400fa0000000000b50f0400000000000000ff00ffffffff00b60f040132000b003b000007ffffffff00b909040033000000000000bc02011cbd02011dbe03022a00c00104e005047fffffffe10b04a802e259000000000000e2040401dc05fe05030000000056";
+
+test("decodes real plain-text A110B telemetry (0300)", async () => {
+  const got = [];
+  const logs = [];
+  const session = new P.PrimeSession({ onTelemetry: (p, cmd) => got.push([P.decodeA110B(p), cmd]), onLog: (m) => logs.push(m) });
+  session.sharedSecret = new Uint8Array(32); // session established
+  await session.handleNotification(P.fromHex(REAL_0300));
+  assert.equal(got.length, 1);
+  const [t, cmd] = got[0];
+  assert.equal(cmd, "0300");
+  assert.equal(t.battery, 80);
+  assert.deepEqual(t.ports.c2, { status: 1, volts: 5, amps: 1.1, watts: 5.9 });
+  assert.equal(t.ports.c1.status, 0);
+  assert.equal(t.reportedOutW, 5.9);
+  assert.equal(P.a110bProblem(t, P.parseParams(P.parsePacket(P.fromHex(REAL_0300)).payload)), null);
+});
+
+test("the 0a00 status reply is read as plain text, not as telemetry", async () => {
+  const got = [];
+  const logs = [];
+  const session = new P.PrimeSession({ onTelemetry: (p) => got.push(p), onLog: (m) => logs.push(m) });
+  session.sharedSecret = new Uint8Array(32);
+  await session.handleNotification(P.fromHex(REAL_0A00));
+  assert.equal(got.length, 0);
+  assert.ok(logs.some((l) => l.startsWith("status reply 0a00: a1=31 a2=02ab06")), logs.join("\n"));
 });

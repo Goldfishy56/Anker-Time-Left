@@ -7,12 +7,13 @@ import {
   UUID_IDENTIFIER,
   UUID_SERVICE_CANDIDATES,
   UUID_TELEMETRY,
-} from "./protocol.js?v=6";
+} from "./protocol.js?v=7";
 
 const NEGOTIATION_RETRY_MS = 10000;
 const NEGOTIATION_TIMEOUT_MS = 60000;
 const RECONNECT_DELAY_MS = 3000;
 const QUIET_LOG_MS = 30000;
+const HEARTBEAT_MS = 20000; // the bank drops the link after ~60 s of silence from us
 
 export function bluetoothAvailable() {
   return typeof navigator !== "undefined" && !!navigator.bluetooth;
@@ -114,7 +115,7 @@ export class PrimeBle {
       onStage: (n) => this.status("negotiating", `step ${n + 1} of 8`),
       onNegotiated: () => {
         this.status("live");
-        this.connectedAt = this.lastTelemetryAt = Date.now();
+        this.connectedAt = this.lastTelemetryAt = this.lastHeartbeat = Date.now();
       },
       onTelemetry: (params, cmd) => {
         this.lastTelemetryAt = Date.now();
@@ -157,10 +158,10 @@ export class PrimeBle {
       }
       return;
     }
-    // The bank only sends readings when something changes, so silence is
-    // normal. Earlier versions re-sent the subscribe request (and later a
-    // 420b keep-alive) during quiet spells, and the bank kept dropping the
-    // link; now we only note it in the log.
+    if (now - this.lastHeartbeat >= HEARTBEAT_MS) {
+      this.lastHeartbeat = now;
+      s.heartbeat().catch((e) => this.log("heartbeat failed: " + e.message));
+    }
     if (now - this.lastTelemetryAt > QUIET_LOG_MS && !this.quietLogged) {
       this.quietLogged = true;
       this.log(`No readings for ${Math.round((now - this.lastTelemetryAt) / 1000)} s (normal if the load is steady)`);

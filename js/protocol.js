@@ -23,7 +23,9 @@ export const UUID_SERVICE_CANDIDATES = [
 export const NEGOTIATION_PATTERN = "030001";
 export const TELEMETRY_PATTERN_OUT = "03000f";
 const SESSION_PATTERNS = new Set(["03010f", "030111"]);
-const TELEMETRY_COMMANDS = new Set(["c402", "4300", "c405"]);
+// 0300 is the A110B's once-a-second plain-text stream; the others are used
+// by other Prime/Solix devices.
+const TELEMETRY_COMMANDS = new Set(["0300", "c402", "4300", "c405"]);
 
 const NEGOTIATION_KEY = "b8ff7422955d4eb6d554a2c470280559";
 const NEGOTIATION_NONCE = "6ba3e3f2f3a60f2971ce5d1f";
@@ -316,11 +318,20 @@ export class PrimeSession {
     }
 
     if (SESSION_PATTERNS.has(pattern) && this.sharedSecret) {
-      if (cmd === "0300") return this.onTelemetry(parseParams(payload), cmd);
-      const params = parseParams(await gcmDecrypt(this.key, this.nonce, payload));
-      const looksLikeTelemetry = ["a2", "a6", "a8", "a9", "ac"].every((k) => params.has(k));
-      if (TELEMETRY_COMMANDS.has(cmd) || looksLikeTelemetry) return this.onTelemetry(params, cmd);
-      this.onLog(`unhandled ${pattern}/${cmd}: ${[...params].map(([k, v]) => k + "=" + hex(v)).join(" ")}`);
+      // Bit 0x40 of the command's first byte marks an encrypted payload
+      // (e.g. 4300). The 20K sends its telemetry (0300) and replies such as
+      // the 0a00 snapshot in plain text.
+      const encrypted = (parseInt(cmd.slice(0, 2), 16) & 0x40) !== 0;
+      const params = parseParams(encrypted ? await gcmDecrypt(this.key, this.nonce, payload) : payload);
+      if (TELEMETRY_COMMANDS.has(cmd)) return this.onTelemetry(params, cmd);
+      const fields = [...params].map(([k, v]) => k + "=" + hex(v)).join(" ");
+      if (cmd === "0a00") {
+        // Reply to our 4200 status request: proves the bank heard us.
+        this.onLog(this.snapshotSeen ? "status reply 0a00" : `status reply 0a00: ${fields}`);
+        this.snapshotSeen = true;
+        return;
+      }
+      this.onLog(`unhandled ${pattern}/${cmd}: ${fields}`);
     }
   }
 
@@ -377,12 +388,11 @@ export class PrimeSession {
   }
 
   /**
-   * Re-arm the telemetry stream. Other Prime devices stop streaming (and
-   * eventually drop the link) unless this arrives every ~10 s; SolixBLE
-   * sends the same command to the Prime chargers.
+   * Heartbeat: re-send the 4200 status request. The bank answers it (0a00),
+   * and without traffic from us it drops the link after ~60 s.
    */
-  async keepAlive() {
-    await this.send(TELEMETRY_PATTERN_OUT, "420b", [
+  async heartbeat() {
+    await this.send(TELEMETRY_PATTERN_OUT, "4200", [
       ["a1", fromHex("21")],
       ["fe", timestamp()],
     ]);

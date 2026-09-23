@@ -1,7 +1,7 @@
-import { PrimeBle, bluetoothAvailable } from "./ble.js?v=6";
-import { a110bProblem, decodeA110B, hex, PortStatus } from "./protocol.js?v=6";
-import { DEFAULTS, Estimator, formatDuration } from "./estimator.js?v=6";
-import { APP_VERSION, CHANGELOG } from "./changelog.js?v=6";
+import { PrimeBle, bluetoothAvailable } from "./ble.js?v=7";
+import { a110bProblem, decodeA110B, hex, PortStatus } from "./protocol.js?v=7";
+import { DEFAULTS, Estimator, formatDuration } from "./estimator.js?v=7";
+import { APP_VERSION, CHANGELOG } from "./changelog.js?v=7";
 
 const $ = (id) => document.getElementById(id);
 
@@ -51,6 +51,7 @@ let source = null; // PrimeBle or demo
 let wakeLock = null;
 let connState = "disconnected";
 let lastSampleAt = 0; // when the estimator last got a sample
+let lastLiveAt = 0; // last moment we were connected and live
 let shown = null; // countdown on screen, eased toward the estimate
 let shownMode = null;
 let shownAt = 0;
@@ -104,6 +105,7 @@ const STATUS_TEXT = {
 };
 
 function onStatus(state, detail = "") {
+  if (connState === "live") lastLiveAt = Date.now();
   connState = state;
   const [text, cls] = STATUS_TEXT[state] || [state, ""];
   const pill = $("status");
@@ -196,7 +198,9 @@ function renderCountdown() {
     $("countdown").textContent = "Idle";
     $("sub").textContent = "Plug something in to see how long the bank will last";
   }
-  if (connState !== "live" && connState !== "demo") $("sub").textContent += " · last known";
+  // Brief reconnects are routine; only flag the estimate as stale after 15 s.
+  const offline = connState !== "live" && connState !== "demo";
+  if (offline && Date.now() - lastLiveAt > 15000) $("sub").textContent += " · last known";
   hero.className = cls;
 }
 

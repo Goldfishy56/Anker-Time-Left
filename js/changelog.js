@@ -2,12 +2,21 @@
 // version is the app version shown in the footer.
 export const CHANGELOG = [
   {
+    version: 7,
+    date: "2026-09-23",
+    changes: [
+      "Your debug log showed the bank hangs up after about 60 seconds if the app stays silent. The app now sends a status request every 20 seconds, which the bank answers, to keep the connection open.",
+      "Messages the bank sends unencrypted (such as its status reply) are now read correctly instead of being decrypted into garbage.",
+      "Brief reconnects no longer mark the estimate as \"last known\"; that only shows after 15 seconds offline.",
+    ],
+  },
+  {
     version: 6,
     date: "2026-09-23",
     changes: [
       "The countdown now ticks down smoothly one second at a time and eases into new estimates instead of jumping 30-60 seconds.",
       "The average is now weighted by time. The bank only sends a reading when something changes, so bursts of readings no longer skew it.",
-      "Stopped sending the bank anything after connecting (no keep-alive or re-subscribe). One of those is the likely cause of the disconnects every 30-60 seconds.",
+      "Stopped sending the bank anything after connecting (no keep-alive or re-subscribe), to test whether one of those caused the disconnects. It didn't: see version 7.",
       "Debug log keeps more history and notes, at each disconnect, how long before it the app last sent or received data.",
     ],
   },
