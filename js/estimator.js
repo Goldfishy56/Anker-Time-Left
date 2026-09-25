@@ -10,6 +10,8 @@
 // The bank only reports whole percents, so between ticks the state of charge
 // is interpolated by integrating the measured power draw.
 
+import { ChargeModel } from "./charge.js?v=12";
+
 export const DEFAULTS = {
   capacityWh: 72.36, // Anker Prime 20K 220W (A110B): 20,100 mAh @ 3.6 V
   efficiency: 0.85, // cell -> USB output conversion efficiency
@@ -30,10 +32,13 @@ const SHIFT_RATIO = 0.35;
 const FLIP_MIN_W = 3; // charging below this net input is treated as not charging
 
 export class Estimator {
-  constructor(settings = {}, learned = null) {
+  constructor(settings = {}, learned = null, chargeSaved = null) {
     this.s = { ...DEFAULTS, ...settings };
     // Learned usable output Wh per battery percent: { whPerPct, weight }
     this.learned = learned;
+    // Learned charging behaviour (rate per Wh and taper curve).
+    this.charge = new ChargeModel(chargeSaved, this.s.chargeEfficiency / (this.s.capacityWh / 100));
+    this.lastChargeSave = 0;
     this.reset();
   }
 
@@ -47,6 +52,7 @@ export class Estimator {
     this.anchor = null; // { pct } % boundary where the learning window began
     this.deliveredWh = 0; // output energy since anchor
     this.estimate = null;
+    if (this.charge) this.charge.reset();
   }
 
   get priorWhPerPct() {
@@ -102,6 +108,12 @@ export class Estimator {
     }
 
     this.learn(pct, outW, inW, dt, gap);
+    const chargeLearned = this.charge.observe(t, pct, inW - outW, this.precise);
+    // Save at most every 30 s while charging, and always when a charge ends.
+    if (chargeLearned && (t - this.lastChargeSave > 30000 || this.charge.sessionStart == null)) {
+      this.lastChargeSave = t;
+      if (this.onChargeLearned) this.onChargeLearned(this.charge.toJSON());
+    }
 
     this.lastT = t;
     this.pct = pct;
@@ -201,18 +213,12 @@ export class Estimator {
     if (netW > MIN_LOAD_W) {
       return { mode: "discharging", seconds: (remainingWh / netW) * 3600, at: t, soc, remainingWh, netW };
     }
-    if (netW < -MIN_LOAD_W && this.bankMinutesToFull) {
-      // The bank knows its own charge curve; trust its figure.
-      return { mode: "charging", seconds: this.bankMinutesToFull * 60, at: t, soc, remainingWh, netW, source: "bank" };
-    }
     if (netW < -MIN_LOAD_W) {
-      // Charging: roughly linear to ~90 %, then the CV phase tapers. Pad the
-      // last 10 % by 1.5x to account for that.
-      const cellWhPerPct = this.s.capacityWh / 100;
-      const rate = (-netW * this.s.chargeEfficiency) / cellWhPerPct; // %/h
-      const linear = Math.max(0, 90 - soc);
-      const taper = Math.max(0, 100 - Math.max(soc, 90)) * 1.5;
-      return { mode: "charging", seconds: ((linear + taper) / rate) * 3600, at: t, soc, remainingWh, netW };
+      // Learned charge model: current charging power carried along the
+      // learned taper curve (see charge.js).
+      const seconds = this.charge.secondsToFull(soc, this.charge.wNow ?? -netW);
+      const bankSeconds = this.bankMinutesToFull ? this.bankMinutesToFull * 60 : null;
+      return { mode: "charging", seconds, at: t, soc, remainingWh, netW, bankSeconds };
     }
     return { mode: "idle", seconds: null, at: t, soc, remainingWh, netW };
   }

@@ -84,15 +84,6 @@ test("learns a bank that delivers less than rated", () => {
   assert.ok(est.whPerPct < 0.56, `blended ${est.whPerPct}`);
 });
 
-test("charging reports time to full", () => {
-  const est = new Estimator();
-  const e = est.update(0, 50, 0, 65);
-  assert.equal(e.mode, "charging");
-  // 40 % linear + 10 % * 1.5 taper = 55 % at 65*0.9/0.7236 %/h
-  const expected = (55 / ((65 * 0.9) / 0.7236)) * 3600;
-  assert.ok(Math.abs(e.seconds - expected) < 1);
-});
-
 test("idle when nothing is plugged in", () => {
   assert.equal(new Estimator().update(0, 50, 0, 0).mode, "idle");
 });
@@ -117,13 +108,6 @@ test("a very long gap starts fresh", () => {
   for (let t = 0; t < 180; t += 2) est.update(t * 1000, 60, 50, 0);
   const e = est.update(600000, 55, 10, 0);
   assert.equal(e.netW, 10);
-});
-
-test("charging uses the bank's own time to full when given", () => {
-  const e = new Estimator().update(0, 9.5, 0, 95, { precise: true, bankMinutesToFull: 54 });
-  assert.equal(e.mode, "charging");
-  assert.equal(e.seconds, 54 * 60);
-  assert.equal(e.source, "bank");
 });
 
 test("precise % is used as-is and still learns capacity", () => {

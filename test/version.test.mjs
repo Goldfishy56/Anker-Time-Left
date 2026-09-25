@@ -10,7 +10,7 @@ test("changelog is newest first with unique versions", () => {
 });
 
 test("cache-busting ?v= matches the changelog version everywhere", () => {
-  for (const f of ["index.html", "js/app.js", "js/ble.js"]) {
+  for (const f of ["index.html", "js/app.js", "js/ble.js", "js/estimator.js"]) {
     const src = readFileSync(new URL("../" + f, import.meta.url), "utf8");
     const tags = [...src.matchAll(/\?v=(\d+)/g)].map((m) => Number(m[1]));
     assert.ok(tags.length, `${f} has versioned imports`);

@@ -194,7 +194,8 @@
     <div class="field"><label for="eff">Output efficiency<span class="hint">% of stored energy that reaches your device</span></label><input id="eff" type="number" step="1" min="50" max="100" inputmode="numeric"></div>
     <div class="field"><label for="smooth">Averaging window<span class="hint">seconds of power draw to average; higher = steadier</span></label><input id="smooth" type="number" step="30" min="30" max="900" inputmode="numeric"></div>
     <p class="muted" id="learned"></p>
-    <p><button class="secondary" id="reset-learned">Forget learned capacity</button></p>
+    <p class="muted" id="learned-charge"></p>
+    <p><button class="secondary" id="reset-learned">Forget everything learned</button></p>
   </details>
 
   <details id="debug">
@@ -205,6 +206,6 @@
 
   <footer>Version <span id="version"></span> · Not affiliated with Anker. Protocol from <a href="https://github.com/flip-dots/SolixBLE">SolixBLE</a>.</footer>
 </main>
-<script type="module" src="js/app.js?v=11"></script>
+<script type="module" src="js/app.js?v=12"></script>
 </body>
 </html>

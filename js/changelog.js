@@ -2,6 +2,15 @@
 // version is the app version shown in the footer.
 export const CHANGELOG = [
   {
+    version: 12,
+    date: "2026-09-25",
+    changes: [
+      "Fixed: the \"until full\" countdown sitting on the same second (e.g. 19:40) for 20+ seconds. It was pinned to the bank's own estimate, which only changes once a minute. The bank's figure is now just a side note (\"Anker says ~20 min\").",
+      "New charging model: the app measures how fast the battery is really filling (to 0.01 %) and learns how your bank slows down as it gets near full and warms up. It starts from a typical curve and gets more accurate with every charge.",
+      "Settings shows what it has learned about charging. \"Forget everything learned\" resets it along with the capacity learning.",
+    ],
+  },
+  {
     version: 11,
     date: "2026-09-23",
     changes: [

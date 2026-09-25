@@ -1,7 +1,7 @@
-import { PrimeBle, bluetoothAvailable } from "./ble.js?v=11";
-import { a110bProblem, decodeA110B, hex, PortStatus } from "./protocol.js?v=11";
-import { DEFAULTS, Estimator, formatDuration } from "./estimator.js?v=11";
-import { APP_VERSION, CHANGELOG } from "./changelog.js?v=11";
+import { PrimeBle, bluetoothAvailable } from "./ble.js?v=12";
+import { a110bProblem, decodeA110B, hex, PortStatus } from "./protocol.js?v=12";
+import { DEFAULTS, Estimator, formatDuration } from "./estimator.js?v=12";
+import { APP_VERSION, CHANGELOG } from "./changelog.js?v=12";
 
 const $ = (id) => document.getElementById(id);
 
@@ -27,7 +27,11 @@ const store = {
 
 let settings = { ...DEFAULTS, ...store.get("settings", {}) };
 delete settings.smoothingSeconds; // old setting, replaced by averageSeconds
-const estimator = new Estimator(settings, store.get("learned", null));
+const estimator = new Estimator(settings, store.get("learned", null), store.get("chargeModel", null));
+estimator.onChargeLearned = (m) => {
+  store.set("chargeModel", m);
+  renderLearned();
+};
 estimator.onLearned = (l) => {
   store.set("learned", l);
   renderLearned();
@@ -229,7 +233,7 @@ function renderCountdown() {
     const at = new Date(Date.now() + secs * 1000);
     $("sub").textContent =
       `Full around ${at.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })} · ${fmtW(avg)} W in` +
-      (e.source === "bank" ? " · bank's estimate" : "");
+      (e.bankSeconds ? ` · Anker says ~${Math.round(e.bankSeconds / 60)} min` : "");
     cls += " charging";
   } else {
     $("mode").textContent = "Nothing is drawing power";
@@ -385,6 +389,12 @@ function renderLearned() {
     l && l.weight
       ? `Learned from ${Math.round(l.weight)} % of real drain: ${(l.whPerPct * 100).toFixed(1)} Wh usable per full charge (rated ${(prior * 100).toFixed(1)} Wh). Using ${(estimator.whPerPct * 100).toFixed(1)} Wh.`
       : `Using ${(prior * 100).toFixed(1)} Wh usable per full charge. This gets refined automatically after the battery drops a few percent while connected.`;
+  const c = estimator.charge;
+  const bands = c.shape.filter((b) => b && b.s >= 1).length;
+  const charges = Math.max(0, ...c.shape.map((b) => (b && b.s) || 0));
+  $("learned-charge").textContent = c.k
+    ? `Charging: learned from ${charges} charge${charges === 1 ? "" : "s"} (${bands} of 100 % mapped). Gains ${c.k.toFixed(2)} % per Wh in. Near full, the countdown follows how your bank actually slows down.`
+    : "Charging: uses a typical curve (full power to 80 %, then slowing) until it has watched your bank charge for a few minutes. Every charge refines it.";
 }
 function saveSettings() {
   const cap = parseFloat($("cap").value);
@@ -401,6 +411,10 @@ for (const id of ["cap", "eff", "smooth"]) $(id).addEventListener("change", save
 $("reset-learned").addEventListener("click", () => {
   estimator.learned = null;
   store.set("learned", null);
+  estimator.charge.k = null;
+  estimator.charge.kN = 0;
+  estimator.charge.shape = estimator.charge.shape.map(() => null);
+  store.set("chargeModel", null);
   renderLearned();
 });
 

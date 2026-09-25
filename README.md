@@ -48,7 +48,7 @@ node --test                   # protocol + estimator tests
 
 ### Releasing a new version
 
-Add an entry at the top of `js/changelog.js`, then bump every `?v=` in `index.html`, `js/app.js` and `js/ble.js` to the new number (the query string stops phones running cached scripts). `node --test` fails if the two don't match.
+Add an entry at the top of `js/changelog.js`, then bump every `?v=` in `index.html`, `js/app.js`, `js/ble.js` and `js/estimator.js` to the new number (the query string stops phones running cached scripts). `node --test` fails if the two don't match.
 
 ## Project layout
 
